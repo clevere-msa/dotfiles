@@ -1,0 +1,14 @@
+#!/bin/bash
+
+PRJ=$1
+VER=$2
+
+FN="$PRJ.$VER"
+
+echo "going to deploy $FN.set"
+
+sudo deploy "$FN.set"
+md5sum --quiet --check "$FN.secure.md5" 
+md5sum --quiet --check "$FN.standard.md5"
+
+echo "if you don't see any messages above with the string FAIL, $FN.set is deployed and validated"

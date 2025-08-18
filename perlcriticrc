@@ -1,0 +1,4 @@
+[CodeLayout::RequireTidyCode]
+perltidyrc = /etc/perltidy.conf
+
+[-Miscellanea::RequireRcsKeywords]

@@ -1,0 +1,9 @@
+#!/bin/sh
+
+DB=msa_dev
+OWNER=$1
+PKG=$2
+SQL="$PKG.sql"
+
+rm -f $SQL
+/usr/local/bin/get_package.sh $DB $OWNER $PKG msa1_code_test tempsysuser10 > $SQL 

@@ -1,0 +1,48 @@
+# do not bell on tab-completion
+set bell-style none
+set meta-flag on
+set input-meta on
+set convert-meta off
+set output-meta on
+
+# Completed names which are symbolic links to
+# directories have a slash appended.
+set mark-symlinked-directories on
+
+"\e[1~": beginning-of-line
+"\e[4~": end-of-line
+"\e[5~": history-search-backward
+"\e[6~": history-search-forward
+"\e[5C": forward-word
+"\e[5D": backward-word
+
+"\e[Z": "\e-1\C-i"
+
+#Space: magic-space
+Tab: menu-complete
+
+set completion-ignore-case On
+set bell-style visible
+set expand-tilde on
+set convert-meta off
+set input-meta on
+set output-meta on
+set show-all-if-ambiguous on
+set visible-stats on
+
+# for linux console and RH/Debian xterm
+
+"\e[3~": delete-char
+"\eOC": forward-char
+"\eOD": backward-char
+"\e[C": forward-char
+"\e[D": backward-char
+"\e[2~": quoted-insert
+
+
+# for rxvt
+"\e[8~": end-of-line
+
+# for non RH/Debian xterm, can't hurt for RH/DEbian xterm
+"\eOH": beginning-of-line
+"\eOF": end-of-line

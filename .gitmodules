@@ -1,0 +1,19 @@
+[submodule "vim/pack/clevere/start/airline"]
+	path = vim/pack/clevere/start/airline
+	url = https://github.com/vim-airline/vim-airline.git
+[submodule "vim/pack/clevere/start/gitgutter"]
+	path = vim/pack/clevere/start/gitgutter
+	url = https://github.com/airblade/vim-gitgutter.git
+[submodule "vim/pack/clevere/start/ale"]
+	path = vim/pack/clevere/start/ale
+	url = https://github.com/dense-analysis/ale.git
+[submodule "vim/pack/clevere/start/perl"]
+	path = vim/pack/clevere/start/perl
+	url = https://github.com/vim-perl/vim-perl.git
+	branch = master
+[submodule "vim/pack/clevere/start/airline-themes"]
+	path = vim/pack/clevere/start/airline-themes
+	url = https://github.com/vim-airline/vim-airline-themes.git
+[submodule "tmux/plugins/tpm"]
+	path = tmux/plugins/tpm
+	url = https://github.com/tmux-plugins/tpm

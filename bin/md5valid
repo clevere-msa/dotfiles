@@ -1,0 +1,3 @@
+#!/bin/sh
+
+/usr/bin/md5sum --check $1 | grep FAIL

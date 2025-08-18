@@ -1,0 +1,196 @@
+#!/usr/bin/perl
+
+use strict;
+use warnings;
+
+use Getopt::Long;
+use File::Find;
+use File::Copy;
+use File::Basename;
+use Cwd;
+
+delete @ENV{qw(PATH IFS CDPATH ENV BASH_ENV)};
+
+my $verbose = '';
+my $test    = '';
+my @dirs    = ();
+my @files   = ();
+my ($match, 
+    $replace, 
+    $verb, 
+    $to, 
+    $action,
+    $file_op,
+    $new,
+    $old);
+
+my $match_arg   = '';
+my $replace_arg = '';
+my $action_arg  = 'move';
+my @dir_args    = ();
+
+GetOptions(
+  help           => \&usage,
+  verbose        => \$verbose,
+  test           => \$test,
+  'match=s'      => \$match_arg,
+  'replace=s'    => \$replace_arg,
+  'action=s'     => \$action_arg,
+  'directory=s@' => \@dir_args,
+);
+
+my ($me, $binpath, $ext) = fileparse($0);
+##
+## we have to untaint at least the replace parameter to 
+## keep backticks from being executed; may as well untaint 
+## all of them
+##
+my @errors = ();
+
+{
+  local $1;
+  if (! $match_arg) {
+    push @errors, 'match argument required'
+  } elsif ($match_arg =~ m/^([^`]+)$/) {
+    $match = $1;
+  } else {
+    push @errors, 'backticks not allowed in match argument';
+  }
+}
+
+{
+  local $1;
+  if (! $replace_arg) {
+    push @errors, "replace argument required"
+  } elsif ($replace_arg =~ m/^([^`]+)$/) {
+    $replace = $1;
+  } else {
+    push @errors, 'backticks not allowed in match argument';
+  }
+}
+
+if ($action_arg) {
+  local $1;
+  if ($action_arg =~ m/^(move|copy)$/) {
+    $action = $1;
+  } else {
+    push @errors, qq{unknown action argument $action_arg - use 'move' or 'copy'};
+  }
+}
+##
+## build the list of directories to process, checking the supplied paths to 
+## make sure that they point to real directories
+##
+foreach (@dir_args, @ARGV) {
+  if (! -e $_) {
+    push @errors, qq{directory $_ not found};
+    next;
+  }
+  if (! -d $_) {
+    push @errors, qq{$_ not a directory};
+    next;
+  }
+  push @dirs, $_;
+}
+
+if (@dirs == 0) {
+  cwd =~ m/(.*)/; 
+  push @dirs, $1;
+}
+##
+## report any errors
+##
+if (@errors) {
+  &croak(sprintf("%s: errors found:\n\n%s\n", 
+                 $me, 
+                 join("", map { qq{   $_\n} } @errors)));
+}
+##
+## 
+##
+$verbose = 1 if $test;
+if ($verbose) {
+  print "$me ($action_arg mode) working in these dirs";
+  print " in test mode" if $test;
+  print ":\n\n";
+  print "   $_\n" foreach @dirs;
+  print "\nusing perl regexp s/$match/$replace/\n\n";
+}
+##
+## get a list of files to operate on and do our dirty work
+##
+find({ untaint => 1, wanted  => \&list_matches, }, @dirs);
+
+$verb    = $action eq 'move' ? 'moved' : 'copied';
+$to      = $action eq 'move' ? '   to' : '    to';
+$file_op = $action eq 'move' 
+             ? \&File::Copy::move
+             : \&File::Copy::copy;
+
+foreach $old (@files) {
+  $new = $old;
+  next unless $new =~ s/$match/eval qq{"$replace"}/e;
+
+  &croak("$me - rename of $old to $new: $!")
+    if ! $test && $file_op->($old => $new);
+
+  print "$verb $old\n$to $new\n" if $verbose;
+}
+
+if ($verbose) {
+  print "\n" if scalar @files;
+  printf("found and $verb %d files\n", scalar @files);
+}
+
+exit 0;
+
+sub croak {
+  my $message = shift;
+  my $status  = shift;
+
+  $status ||= 1;
+
+  print $message;
+  exit  $status;
+}
+
+sub usage {
+  print <<"EOT";
+$me [ REQUIRED ] [ OPTIONAL ] [ DIRECTORY PATHS ]
+
+REQUIRED
+
+  --match <regexp>             : match this regular expression
+  --replace <replacement exp>  : expression for new filenames
+
+OPTIONAL
+
+  --help                       : this help screen
+  --verbose                    : blow-by-blow report of activities
+  --test                       : simulated execution
+  --action <action>            : move (default) or copy
+  --directory <directory path> : directory to process
+
+DIRECTORY PATHS
+
+  use optional --directory argument or supply individual paths;
+  defaults to current working directory if none supplied
+
+NOTES
+
+  use of perl built in variables for regular expressions is supported
+
+EOT
+
+  exit 0;
+}
+
+sub list_matches {
+  local $1;
+
+  return if ! $File::Find::name =~ m/(.+)/;
+  my $name = $1;
+  return if ! $name =~ m/$match/;
+  print "   adding $name to list\n" if $verbose;
+  push @files, $name;
+}

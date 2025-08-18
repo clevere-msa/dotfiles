@@ -1,0 +1,10 @@
+#!/bin/sh
+
+DB=msa_dev
+OWNER=$1
+VIEW=$2
+SQL="$VIEW.sql"
+
+rm -f $SQL
+
+/usr/sbin/get_table_ddl.sh $DB $OWNER $VIEW msa1_code_test tempsysuser10 > $SQL 

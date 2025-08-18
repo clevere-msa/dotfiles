@@ -1,0 +1,53 @@
+#!/bin/sh
+
+PROJECT="$1"
+ACTION="$2"
+
+case $PROJECT in
+  airworld) ;;
+  airbp)    ;;
+  shell)    ;;
+
+  aw)       PROJECT="airworld"
+            ;;
+  bp)       PROJECT="airbp"
+            ;;
+  sh)       PROJECT="shell"
+            ;;
+
+  *)        echo "rjc missing project parameter - aw|airworld|bp|airbp|sh|shell"
+            exit 1
+            ;;
+esac
+
+RUNENV="sudo -u msa_oper /usr/bin/$PROJECT-run-env.plx quiet"
+
+case "$ACTION" in
+  start)   
+    echo "rjc: starting $PROJECT rjcron process"
+    $RUNENV /usr/bin/rjcronmon.plx -a MON
+    echo "started"
+    ;;
+
+  stop)
+    echo "rjc: stopping $PROJECT rjcron process"
+    $RUNENV /usr/bin/rjcronmon.plx -a STOP
+    echo "stopped"
+    ;;
+
+  restart)
+    echo "rjc: restarting $PROJECT rjcron process"
+    $RUNENV /usr/bin/rjcronmon.plx -a STOP
+    echo "stopped"
+    sleep 3
+    $RUNENV /usr/bin/rjcronmon.plx -a MON
+    echo "started"
+    ;;
+
+  *)
+    echo "rjc: missing action parameter: help|stop|start|restart"
+    exit 1
+    ;;
+esac
+
+exit 0;

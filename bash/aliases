@@ -1,0 +1,175 @@
+#
+# directory functions
+#
+function md {
+    command mkdir -p "${@}" 
+    command cd "${@}"
+}
+
+function psd {
+    local DIR="${@:-HOME}"
+    pushd ${DIR}
+    ls -lhF --color
+}
+
+function ppd {
+    popd 
+    ls -lhF --color
+}
+
+function cd {
+    command cd "${@}"
+    ls -lhF --color
+}
+
+#-------------------
+# Personal Aliases
+#-------------------
+
+# -> Prevents accidentally clobbering files.
+alias rmf="rm -f"
+alias rmrf="rm -rf"
+alias rm="rm -i"
+alias cp="cp -i"
+alias mv="mv -i"
+
+alias h="history | less"
+alias j="jobs -l"
+alias which="type -all"
+alias CD="cd"
+alias ..="cd .."
+alias ...="cd ../.."
+alias ....="cd ../../.."
+alias path="echo -e ${PATH//:/\\\n}"
+alias du="du -h"
+
+alias more="less"               # better less than more
+
+alias vi="/snap/bin/nvim -O"
+
+function tf {
+	tail -f ${1} | less
+}
+
+# The "ls" family (this assumes you use the GNU ls)
+alias ls="ls -hF --color" # add colors for filetype recognition
+alias ll="ls -l "
+alias lll="ls -l ${1} | less"
+alias lx="ls -lXB"        # sort by extension
+alias lk="ls -lSr"        # sort by size
+alias la="ls -Al"         # show hidden files
+alias lr="ls -lR"         # recursice ls
+alias lt="ls -ltr"        # sort by date
+alias lm="ls -al |less"   # pipe through "less"
+alias tree="tree -Cs"     # alternative to "ls"
+
+# Git
+alias ga="git add"
+alias gco="git commit"
+alias gp="git push"
+alias gf="git fetch"
+alias gl="git log"
+alias gs="git status"
+
+# tmux
+alias ta="tmux attach"
+
+# perl
+alias pt=perltidy
+alias p5l="export /project/users/$LOGNAME/$1/perl-lib"
+alias splh="export PERL5LIB=${PWD}:/project/users/$LOGNAME/lib/perl5; set | grep [P]ERL5LIB="
+alias reperl="perl -de0"
+
+alias csc="sudo -u root /usr/local/bin/shell-run-env.plx fw_object_cache.plx -p shell -t all -i all -d"
+
+function ws {
+    ROOT="/project/users/$LOGNAME"
+    WS="${ROOT}"
+    if [ "${#}" == 1 ] ; then
+        WS="${ROOT}/${1}"
+    else
+        WS="${ROOT}/${1}/${2}"
+    fi
+    cd $WS;
+}
+
+function ap {
+    export ARTIFACTORY_USR="$LOGNAME"
+    export ARTIFACTORY_KEY=${1}
+    export ARTIFACTORY_CREDS="$LOGNAME:${1}"
+}
+
+function msar {
+    PE="s/${1}/${2}/g"
+    FILES=`/bin/grep -rl ${1}`
+    /bin/perl -pi -e $PE $FILES
+    /bin/grep -r ${2} *
+}
+
+function zipgit {
+    /usr/bin/zip -r "${1}.zip" "${1}/" -x'*/.*'
+}
+
+function sid {
+    if [ "${#}" == 0 ] ; then
+        su -l d827512
+    else
+        /usr/bin/ssh "d827512@${1}"
+    fi
+}
+
+# grep enhancementsi
+function lgrep {
+    if [ "${#}" != 2 ] ; then
+        echo "Usage: lgrep [string to locate] [string to grep]";
+        return 1;
+    else
+        CMD="locate -i ${1} | grep -i ${2}"
+        echo $CMD
+        command $CMD
+    fi
+}
+
+function proxyon() {
+  export HTTP_PROXY=http://web-proxyosx.us.bank-dns.com:3128
+  export HTTPS_PROXY=${HTTP_PROXY}
+  export https_proxy=${HTTP_PROXY}
+  export http_proxy=${HTTP_PROXY}
+  export ALL_PROXY=${HTTP_PROXY}
+  export no_proxy=127.0.0.1,localhost,.us.bank-dns.com,.internal,.127.0.0.1.nip.io
+  export NO_PROXY=${no_proxy}
+}
+
+# Clear proxy variables
+function proxyoff() {
+  unset HTTPS_PROXY
+  unset https_proxy
+  unset HTTP_PROXY
+  unset http_proxy
+  unset ALL_PROXY
+  unset NO_PROXY
+  unset no_proxy
+}
+
+# spelling typos
+alias xs="cd"
+alias vf="cd"
+alias kk="ll"
+
+alias realias="vi ~/dotfiles/bash/aliases; source ~/dotfiles/bash/aliases"
+alias dswp="rm .*swp"
+
+#
+# move stuff to/from workstation
+#
+mountshare () {
+    sudo mount -t cifs //$PC_HOST/$PC_SHARE $MOUNTPOINT \
+        -o uid=${USER},gid=${USER},file_mode=0777,dir_mode=0777,rw,username=${USER};
+}
+umountshare () { sudo umount $MOUNTPOINT; }
+seeshares () { mount -l -t cifs; }
+
+function _exit() {
+    echo -e "${RED}Hasta la vista, baby${NC}"
+}
+trap _exit 0

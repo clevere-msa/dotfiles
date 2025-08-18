@@ -1,0 +1,23 @@
+#!/bin/sh
+
+SUDO="sudo -u msa_oper"
+PARAM="$1"
+PROJECT=""
+
+if [ "$PARAM" == "bp" ]
+then 
+  PROJECT="airbp"
+elif [ "$PARAM" == "sh" ] 
+then
+  PROJECT="shell"
+else
+  echo "bp ==> airbp, sh ==> shell"
+  exit 1
+fi
+
+RUNENV="/usr/bin/$PROJECT-run-env.plx"
+
+$RUNENV /project/$PROJECT/bin/rjumon.plx STOP
+$RUNENV /project/$PROJECT/bin/rjxmon.plx STOP
+$RUNENV /project/$PROJECT/bin/rjxmon.plx -s 5 -v MON
+$RUNENV /project/$PROJECT/bin/rjumon.plx MON

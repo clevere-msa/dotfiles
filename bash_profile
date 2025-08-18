@@ -1,0 +1,74 @@
+# bash_profile
+
+# exit non-interactive shell now
+if [[ $- != *i* ]]; then
+  return
+fi
+
+# Source global definitions
+if [ -f /etc/bashrc ]; then
+  . /etc/bashrc
+fi
+
+# User specific environment and startup programs
+export MACHINE=$(/usr/local/bin/msa_host_info.pl --alias --uppercase)
+export HOME="/home/$LOGNAME"
+export PATH=".:./bin:$HOME/bin:/project/util/bin:$PATH"
+export SHELL='/bin/bash'
+export PERL5LIB="/project/users/$LOGNAME/lib/perl5"
+export GIT=ssh://git@gitlab.us.bank-dns.com:2222
+
+# bash options
+shopt -s histappend
+shopt -s histreedit
+shopt -s histverify
+shopt -s checkhash
+shopt -s checkwinsize
+shopt -s sourcepath
+shopt -s cdspell
+shopt -s cdable_vars
+shopt -s cmdhist
+
+set -o notify
+set -o noclobber
+set -o ignoreeof
+set -o nounset
+#set -o xtrace          # useful for debugging
+
+# set up command history
+unset HISTFILESIZE
+export HISTSIZE=1000 # default bash_history is 500
+export HISTIGNORE="[ \t]*:\w\w:\w"
+export HISTCONTROL=ignoreboth:erasedups
+export HISTTIMEFORMAT="%h %d %H:%M:%S "
+
+# set up less
+export PAGER=less
+export LESSCHARSET='latin1'
+export LESSOPEN='|/usr/bin/lesspipe.sh %s 2>&-' # Use this if lesspipe.sh exists
+export LESS='-i -N -w  -z-4 -g -M -X -F -R -P%t?f%f :stdin .?pb%pb\%:?lbLine %lb:?bbByte %bb:-...'
+
+export EDITOR=/bin/nvim
+export CDPATH=".:..:../..:../../..:../../../..:/project/users/$LOGNAME:~"
+export INPUTRC="$HOME/dotfiles/bash/inputrc"
+export TEXINPUTS='/project/tex-lib'
+export LC_ALL=en_US.UTF-8
+export LANG=en_US.UTF-8
+export LANGUAGE=en_US.UTF-8
+export ESC="\033"
+export BEL="\007"
+
+# User specific aliases and functions
+. $HOME/dotfiles/bash/completion
+
+# colors
+. $HOME/dotfiles/bash/colors
+export LS_OPTIONS='--color=auto'
+eval $(dircolors -b $HOME/dotfiles/bash/dir_colors)
+
+. $HOME/dotfiles/bash/aliases
+
+PROMPT_COMMAND='printf ${ESC}]2;${LOGNAME}@${MACHINE}:${BEL}'
+PROMPT_COMMAND="$PROMPT_COMMAND; history -a"
+
+PS1="${green}[\d \t]\n${cyan}\u@${MACHINE}:${green}\w\n${yellow}\!.${NC} "

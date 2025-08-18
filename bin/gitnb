@@ -1,0 +1,111 @@
+#!/bin/sh
+
+trap "exit 1" TERM
+export TOP_PID=$$
+
+function fatal_error() {
+    local progname=$(basename $0)
+    printf "%s\n" "$progname: $*" >>/proc/self/fd/2
+    kill -s TERM $TOP_PID
+}
+
+function normalize_app() {
+    local app=$1
+
+    if [ "$app" = "gitbuild" ]; then
+       echo "msa_gitbuild"
+    elif [ "$app" = "auth" ]; then
+       echo "authsys"
+    elif [ "$app" = "airbp" ]; then
+       echo "epic"
+    elif [ "$app" = "fw" ]; then
+       echo "msafw"
+    elif [ "$app" = "adhoc" ]; then
+       echo "msa_adhoc_reports"
+    elif [ "$app" = "gozer" ]; then
+       echo "ripple"
+    elif [ "$app" = "fuel" ]; then
+       echo "fueldb"
+    elif [ "$app" = "support" ]; then
+       echo "msa-prod-support"
+    #elif [ "$app" = "apache" ]; then
+    #   echo "apache_conf"
+    elif [ "$app" = "autosys" ]; then
+       echo "msa_autosys"
+    elif [ "$app" = "titan" ]; then
+       echo "shell"
+    else
+       echo "$app"
+    fi
+}
+
+function group_of() {
+    local app=$1
+
+    if [ "$app" = "msa_gitbuild" ]; then
+       echo "MSA_TOOLS"
+    elif [ "$app" = "test" ]; then
+       echo "MSA_TOOLS"
+    elif [ "$app" = "msalib" ]; then
+       echo "MSA_TOOLS"
+    elif [ "$app" = "msa_autosys" ]; then
+       echo "MSA_TOOLS"
+    elif [ "$app" = "msa_adhoc_reports" ]; then
+       echo "MSA_TOOLS"
+    elif [ "$app" = "ripple" ]; then
+       echo "MSA_TOOLS"
+    elif [ "$app" = "msa-prod-support" ]; then
+       echo "MSA_TOOLS"
+    elif [ "$app" = "apache" ]; then
+       echo "MSA_TOOLS"
+    elif [ "$app" = "fueldb" ]; then
+       echo "MSA_TOOLS"
+    elif [ "$app" = "securedb" ]; then
+       echo "MSA_TOOLS"
+    elif [ "$app" = "branded" ]; then
+       echo "MSA_APPS"
+    elif [ "$app" = "epic" ]; then
+       echo "MSA_APPS"
+    elif [ "$app" = "msafw" ]; then
+       echo "MSA_APPS"
+    elif [ "$app" = "opsver" ]; then
+       echo "MSA_APPS"
+    elif [ "$app" = "pos_files" ]; then
+       echo "MSA_APPS"
+    elif [ "$app" = "pos_trunk" ]; then
+       echo "MSA_APPS"
+    elif [ "$app" = "pos_cert" ]; then
+       echo "MSA_APPS"
+    elif [ "$app" = "shell" ]; then
+       echo "MSA_APPS"
+    elif [ "$app" = "authsys" ]; then
+       echo "MSA_APPS_SECURE"
+    elif [ "$app" = "settlsys" ]; then
+       echo "MSA_APPS_SECURE"
+    elif [ "$app" = "pos_services" ]; then
+       echo "MSA_APPS_SECURE"
+    elif [ "$app" = "joshua" ]; then
+       echo "MSA_APPS_SECURE"
+    else
+        fatal_error "Unknown repo '$app'"
+    fi
+}
+
+STORY=$1
+REPO=$2
+
+APP=`normalize_app "$REPO"`
+echo "app is '$APP'"
+GRP=`group_of "$APP"`
+
+URL=ssh://git@gitlab.us.bank-dns.com:2222/$GRP/$APP.git
+
+STORY="VIZZINI-${STORY}"
+DIR="/project/users/$LOGNAME/git/$STORY/$APP"
+
+echo "cloning '$URL' into '$DIR'"
+
+git clone $URL $DIR
+#git clone $URL $DIR -b release
+#cd $DIR
+#git checkout -b $STORY

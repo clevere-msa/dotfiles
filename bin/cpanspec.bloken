@@ -1,0 +1,13 @@
+#!/usr/bin/bash
+
+perl_pkg=$1
+basename=$( echo "$perl_pkg" | tr "::" "-" )
+
+echo $basename
+
+export CPAN="https://$LOGNAME:$ARTIFACTORY_TOKEN@artifactory.us.bank-dns.com/artifactory/www.cpan.org"
+export PERL_LWP_SSL_VERIFY_HOSTNAME=0
+
+/usr/bin/cpanspec --follow -v $perl_pkg
+mkdir -pv /home/$LOGNAME/rpmbuild/SOURCES
+

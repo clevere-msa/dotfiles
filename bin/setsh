@@ -1,0 +1,3 @@
+#!/bin/sh
+/usr/bin/chsh -s /bin/bash
+echo "now remember to set your password!"

@@ -1,0 +1,31 @@
+#!/bin/bash
+
+HOME="/home/$LOGNAME"
+CONF="$HOME/dotfiles"
+
+rm -f $HOME/.bash_profile
+rm -f $HOME/.bashrc
+rm -f $HOME/bin
+#rm -f $HOME/.config/nvim
+rm -f $HOME/.perltidyrc
+rm -f $HOME/.perlcriticrc
+rm -f $HOME/.profile
+#rm -f $HOME/.ssh
+rm -f $HOME/.tmux.conf
+rm -f $HOME/.tmux
+rm -f $HOME/.vimrc
+rm -f $HOME/.vim
+
+ln -s $CONF/bash_profile $HOME/.bash_profile
+ln -s $CONF/bash/bashrc $HOME/.bashrc
+ln -s $CONF/bin $HOME/bin
+mkdir -p $HOME/.config
+ln -s $CONF/nvim $HOME/.config/nvim
+ln -s $CONF/perltidyrc $HOME/.perltidyrc
+ln -s $CONF/perlcriticrc $HOME/.perlcriticrc
+ln -s $CONF/profile $HOME/.profile
+ln -s $CONF/ssh $HOME/.ssh
+ln -s $CONF/tmux.conf $HOME/.tmux.conf
+ln -s $CONF/tmux $HOME/.tmux
+ln -s $CONF/vimrc $HOME/.vimrc
+ln -s $CONF/vim $HOME/.vim

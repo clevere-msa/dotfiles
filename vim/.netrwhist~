@@ -1,0 +1,8 @@
+let g:netrw_dirhistmax  =10
+let g:netrw_dirhist_cnt =6
+let g:netrw_dirhist_1='/project/users/clevere/git/msa_rpmbuild/bin'
+let g:netrw_dirhist_2='/project/users/clevere/git/msa_rpmbuild/SPECS'
+let g:netrw_dirhist_3='/project/users/clevere/git/rpmbuild/SPECS'
+let g:netrw_dirhist_4='/project/users/clevere/git/VIZZINI-336/msalib'
+let g:netrw_dirhist_5='/project/users/clevere/git/VIZZINI-464/msalib/shared/etc'
+let g:netrw_dirhist_6='/project/users/clevere/git/VIZZINI-464/msalib/shared/src/perl-lib/MSA/Shared'

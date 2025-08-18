@@ -1,0 +1,107 @@
+#!/bin/bash
+
+if (( $# != 3 ))
+then
+    printf "Usage: $0 [user] [db] [sql|file.sql]\n\n"
+    exit 0
+fi
+
+
+user=${1}
+db=${2}
+
+export TWO_TASK=${db}
+export ORACLE_HOME=/opt/oracle/client/11.2.0
+export PATH=${PATH}:${ORACLE_HOME}/bin
+
+if [[ -f ${3} ]]
+then
+    sql=`cat ${3}`
+else
+    sql="${4}"
+fi
+
+echo "${sql}" | egrep -i 'PACKAGE|BEGIN' 2>/dev/null
+if (( $? != 0 ))
+then
+    echo "${sql}" | awk ' { print $0 } ' | grep -v '\-\-' | grep -v '^$' | tail -1 | grep '; *$' >/dev/null 2>&1
+    if (( $? != 0 ))
+    then
+        sql="${sql};"
+    fi
+fi
+
+echo "${sql}" | grep -i 'end;' 2>/dev/null
+if (( $? == 0 ))
+then
+    slash="/"
+else
+    slash=""
+fi
+
+if [[ -z $heading ]]
+then
+    heading=on
+fi
+
+if [[ -z $feedback ]]
+then
+    feedback=on
+fi
+
+if [[ ! -z ${set_autotrace_on_explain} ]]
+then
+    set_autotrace_on_explain="SET AUTOTRACE ON EXPLAIN"
+fi
+
+if [[ ${TWO_TASK} = "msa1_dev" ]]
+then
+    if [[ $user = "msa1_code_test" ]]
+    then
+        passw="tempsysuser10"
+    elif [[ $user = "msa1_db_emer" ]]
+    then
+        passw="temp\$pwd0999"
+    fi
+    lock_var="exec SHELL.FW_LOCK_P.BYPASS := true;"
+fi
+
+if [[ $TWO_TASK = "msa1_dev" ]]
+then
+    if [[ $user = "msa1_code_test" || $user = "msa1_db_emer" ]]
+    then
+        passw="tempsysuser15"
+    fi
+    lock_var="exec SHELL.FW_LOCK_P.BYPASS := true;"
+fi
+
+if [[ ${TWO_TASK} = "msa1_uat" ]]
+then
+    passw="temp\$pwd0999"
+    if [[ $user = "msa1_db_emer" ]]
+    then
+        passw="msa1_db_emer_2014"
+    fi
+    lock_var="exec SHELL.FW_LOCK_P.BYPASS := true;"
+fi
+
+##set -x
+/usr/bin/sqlplus -s <<HEY | grep -v 'rows will be truncated' | grep -iv 'Session altered'
+$user/$passw
+--set colsep '!'
+ALTER SESSION SET nls_date_format = 'YYYY/MM/DD HH24:MI:SS';
+set DEFINE off
+SET LINESIZE $COLUMNS
+SET PAGESIZE $LINES
+SET LONG 1000000
+SET longchunksize 1000000
+SET long 1000000
+SET wrap on
+SET heading $heading
+SET feedback $feedback
+SET SERVEROUTPUT on size 1000000
+${set_autotrace_on_explain}
+${lock_var}
+${sql}
+--${slash}
+HEY

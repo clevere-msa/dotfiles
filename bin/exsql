@@ -1,0 +1,46 @@
+#!/usr/bin/perl
+#
+# exsql.pl - extract sql from a file
+#
+use strict;
+use Carp;
+
+my $DEBUG = '';
+
+my $is_select = '';
+my $is_plsql  = '';
+
+my @input = <STDIN>;
+
+foreach my $line (@input) {
+  chomp $line;
+
+  (my $first_word = $line) =~ s/^\s*(\S*)\s.*/$1/;
+
+  if (! $is_plsql && $first_word =~ m/DECLARE|BEGIN/ ) {
+    $is_plsql = 1;
+  } elsif ( !$is_select && uc $first_word eq 'SELECT' ) {
+    $is_select = 1;
+  }
+
+  print $line, "\n" if $is_plsql || $is_select;
+
+  if ($is_plsql && $first_word eq 'END;') {
+    $is_plsql = '';
+  } elsif ( $is_select && uc $first_word eq '' ) {
+    $is_select = '';
+  }
+
+  next if !$DEBUG;
+
+  warn <<"EOT";
+line:      $line
+1st word:  '$first_word'
+is_plsql:  '$is_plsql'
+is_select: '$is_select'
+
+EOT
+}
+
+exit 0;
+

@@ -1,0 +1,27 @@
+#!/usr/bin/bash
+
+REMOTE=$1
+BUILD=$2
+COMMIT=$3
+
+PROJ=$( echo $REMOTE | /usr/bin/perl -lne 'print m{^.*/(\w+)\.git}' )
+
+USB_GIT_HOST=ssh://git@gitlab.us.bank-dns.com:2222
+
+if [[ $REMOTE != "http"* ]]; then
+    REMOTE="$USB_GIT_HOST/$REMOTE"
+fi
+
+if [[ -z "$COMMIT" ]]
+then
+    COMMIT="HEAD"
+fi
+
+PREFIX="$PROJ-$BUILD"
+
+/usr/bin/git archive     \
+    --remote $REMOTE     \
+    --prefix $PREFIX/    \
+    --format zip         \
+    --output $PREFIX.zip \
+    $COMMIT

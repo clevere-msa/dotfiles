@@ -1,0 +1,5 @@
+#!/bin/sh
+PRJ="$1"
+BIN="${PRJ}-run-env.plx QUIET"
+
+$BIN fw_object_cache.plx -p $PRJ -t all -i all -d
