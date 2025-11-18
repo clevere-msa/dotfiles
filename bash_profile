@@ -72,3 +72,4 @@ PROMPT_COMMAND='printf ${ESC}]2;${LOGNAME}@${MACHINE}:${BEL}'
 PROMPT_COMMAND="$PROMPT_COMMAND; history -a"
 
 PS1="${green}[\d \t]\n${cyan}\u@${MACHINE}:${green}\w\n${yellow}\!.${NC} "
+eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)"

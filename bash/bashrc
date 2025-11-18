@@ -8,7 +8,7 @@ fi
 # User specific environment and startup programs
 export MACHINE=$(/usr/local/bin/msa_host_info.pl --alias --uppercase)
 export HOME="/home/$LOGNAME"
-export PATH=".:./bin:$HOME/bin:/project/util/bin:$PATH:/bin"
+export PATH=".:./bin:$HOME/bin:/project/util/bin:/project/msa/bin:$PATH:/bin"
 export SHELL='/bin/bash'
 export PERL5LIB="/project/users/$LOGNAME/lib/perl5"
 export GIT="ssh://git@gitlab.us.bank-dns.com:2222"
@@ -69,3 +69,4 @@ PROMPT_COMMAND='printf ${ESC}]2;${LOGNAME}\@${MACHINE}:${BEL}'
 PROMPT_COMMAND="$PROMPT_COMMAND; history -a"
 
 PS1="${green}[\d \t]\n${cyan}\u@${MACHINE}:${green}\w\n${yellow}\!.${NC} "
+eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)"

@@ -45,7 +45,7 @@ alias du="du -h"
 
 alias more="less"               # better less than more
 
-alias vi="/snap/bin/nvim -O"
+alias vi="/home/linuxbrew/.linuxbrew/bin/nvim -O"
 
 function tf {
 	tail -f ${1} | less
