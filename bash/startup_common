@@ -1,0 +1,78 @@
+#!/bin/bash
+
+# Common interactive shell setup for bash_profile and bashrc.
+
+# User specific environment and startup programs
+export MACHINE="$(hostname -s 2>/dev/null || hostname)"
+export HOME="/home/$LOGNAME"
+export PATH=".:./bin:$HOME/bin:$HOME/.local/bin:/project/util/bin:/project/msa/bin:$PATH:/bin"
+export SHELL='/bin/bash'
+export PERL5LIB="/project/users/$LOGNAME/lib/perl5"
+export GIT="git@github.com"
+
+# bash options
+shopt -s histappend
+shopt -s histreedit
+shopt -s histverify
+shopt -s checkhash
+shopt -s checkwinsize
+shopt -s sourcepath
+shopt -s cdspell
+shopt -s cdable_vars
+shopt -s cmdhist
+shopt -s checkwinsize
+
+set -o notify
+set -o noclobber
+set -o ignoreeof
+set -o nounset
+#set -o xtrace          # useful for debugging
+
+# set up command history
+unset HISTFILESIZE
+export HISTSIZE=1000 # default bash_history is 500
+export HISTIGNORE="[ \t]*:\w\w:\w"
+export HISTCONTROL=ignoreboth:erasedups
+export HISTTIMEFORMAT="%h %d %H:%M:%S "
+
+# set up less
+export PAGER=less
+export LESSCHARSET='latin1'
+export LESSOPEN='|/usr/bin/lesspipe.sh %s 2>&-' # Use this if lesspipe.sh exists
+export LESS='-i -N -w  -z-4 -g -M -X -F -R -P%t?f%f :stdin .?pb%pb\%:?lbLine %lb:?bbByte %bb:-...'
+
+export EDITOR=/bin/nvim
+export CDPATH=".:..:../..:../../..:../../../..:/project/users/$LOGNAME:~"
+export INPUTRC="$HOME/dotfiles/bash/inputrc"
+export TEXINPUTS='/project/tex-lib'
+if locale -a 2>/dev/null | rg -i -q '^en_US\.utf-8$'; then
+  export LC_ALL=en_US.UTF-8
+  export LANG=en_US.UTF-8
+  export LANGUAGE=en_US.UTF-8
+elif locale -a 2>/dev/null | rg -i -q '^c\.utf8$'; then
+  export LC_ALL=C.utf8
+  export LANG=C.utf8
+  export LANGUAGE=C.utf8
+fi
+export ESC="\033"
+export BEL="\007"
+
+export LS_OPTIONS='--color=auto'
+eval "$(dircolors -b "$HOME/dotfiles/bash/dir_colors")"
+
+# User specific aliases and functions
+. "$HOME/dotfiles/bash/completion"
+
+# colors
+. "$HOME/dotfiles/bash/colors"
+
+. "$HOME/dotfiles/bash/aliases"
+
+PROMPT_COMMAND='printf ${ESC}]2;${LOGNAME}@${MACHINE}:${BEL}'
+PROMPT_COMMAND="$PROMPT_COMMAND; history -a"
+
+export NVM_DIR="$HOME/.nvm"
+[ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
+
+PS1="${green}[\d \t]\n${cyan}\u@${MACHINE}:${green}\w\n${yellow}\!.${NC} "
+eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)"

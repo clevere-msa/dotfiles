@@ -130,26 +130,26 @@ function lgrep {
     fi
 }
 
-function proxyon() {
-  export HTTP_PROXY=http://web-proxyosx.us.bank-dns.com:3128
-  export HTTPS_PROXY=${HTTP_PROXY}
-  export https_proxy=${HTTP_PROXY}
-  export http_proxy=${HTTP_PROXY}
-  export ALL_PROXY=${HTTP_PROXY}
-  export no_proxy=127.0.0.1,localhost,.us.bank-dns.com,.internal,.127.0.0.1.nip.io
-  export NO_PROXY=${no_proxy}
-}
-
-# Clear proxy variables
-function proxyoff() {
-  unset HTTPS_PROXY
-  unset https_proxy
-  unset HTTP_PROXY
-  unset http_proxy
-  unset ALL_PROXY
-  unset NO_PROXY
-  unset no_proxy
-}
+#function proxyon() {
+#  export HTTP_PROXY=http://web-proxyosx.us.bank-dns.com:3128
+#  export HTTPS_PROXY=${HTTP_PROXY}
+#  export https_proxy=${HTTP_PROXY}
+#  export http_proxy=${HTTP_PROXY}
+#  export ALL_PROXY=${HTTP_PROXY}
+#  export no_proxy=127.0.0.1,localhost,.us.bank-dns.com,.internal,.127.0.0.1.nip.io
+#  export NO_PROXY=${no_proxy}
+#}
+#
+## Clear proxy variables
+#function proxyoff() {
+#  unset HTTPS_PROXY
+#  unset https_proxy
+#  unset HTTP_PROXY
+#  unset http_proxy
+#  unset ALL_PROXY
+#  unset NO_PROXY
+#  unset no_proxy
+#}
 
 # spelling typos
 alias xs="cd"

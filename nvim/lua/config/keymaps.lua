@@ -21,3 +21,18 @@ map("n", "<F9>", function()
     vim.fn.cursor(line, 0)
   end
 end, { desc = "Format Perl with perltidy" })
+
+-- Codex: open a terminal running `codex` (expects the `codex` CLI on $PATH).
+vim.api.nvim_create_user_command("Codex", function()
+  if vim.fn.executable("codex") ~= 1 then
+    vim.notify("`codex` not found on $PATH", vim.log.levels.ERROR)
+    return
+  end
+
+  vim.cmd("botright split")
+  vim.cmd("resize 15")
+  vim.cmd("terminal codex")
+  vim.cmd("startinsert")
+end, {})
+
+map("n", "<leader>ac", "<cmd>Codex<CR>", { desc = "Codex" })

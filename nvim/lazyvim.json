@@ -1,14 +1,12 @@
 {
   "extras": [
-    "lazyvim.plugins.extras.ai.copilot",
-    "lazyvim.plugins.extras.ai.copilot-chat",
     "lazyvim.plugins.extras.editor.refactoring",
     "lazyvim.plugins.extras.editor.telescope",
     "lazyvim.plugins.extras.util.gitui"
   ],
   "install_version": 8,
   "news": {
-    "NEWS.md": "10960"
+    "NEWS.md": "11866"
   },
   "version": 8
 }
