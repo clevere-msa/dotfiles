@@ -5,7 +5,7 @@
 # User specific environment and startup programs
 export MACHINE="$(hostname -s 2>/dev/null || hostname)"
 export HOME="/home/$LOGNAME"
-export PATH=".:./bin:$HOME/bin:$HOME/.local/bin:/project/util/bin:/project/msa/bin:$PATH:/bin"
+export PATH=".:./bin:/usr/local/bin:$HOME/bin:$HOME/.local/bin:/project/util/bin:/project/msa/bin:$PATH:/bin"
 export SHELL='/bin/bash'
 export PERL5LIB="/project/users/$LOGNAME/lib/perl5"
 export GIT="git@github.com"
