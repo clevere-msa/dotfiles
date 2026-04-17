@@ -1,31 +1,87 @@
 #!/bin/bash
 
-HOME="/home/$LOGNAME"
 CONF="$HOME/dotfiles"
+UPDATE_ONLY=false
 
-rm -f $HOME/.bash_profile
-rm -f $HOME/.bashrc
-rm -f $HOME/bin
-#rm -f $HOME/.config/nvim
-rm -f $HOME/.perltidyrc
-rm -f $HOME/.perlcriticrc
-rm -f $HOME/.profile
-#rm -f $HOME/.ssh
-rm -f $HOME/.tmux.conf
-rm -f $HOME/.tmux
-rm -f $HOME/.vimrc
-rm -f $HOME/.vim
+if [ "${1:-}" = "--update" ]; then
+  UPDATE_ONLY=true
+fi
 
-ln -s $CONF/bash_profile $HOME/.bash_profile
-ln -s $CONF/bash/bashrc $HOME/.bashrc
-ln -s $CONF/bin $HOME/bin
-mkdir -p $HOME/.config
-ln -s $CONF/nvim $HOME/.config/nvim
-ln -s $CONF/perltidyrc $HOME/.perltidyrc
-ln -s $CONF/perlcriticrc $HOME/.perlcriticrc
-ln -s $CONF/profile $HOME/.profile
-ln -s $CONF/ssh $HOME/.ssh
-ln -s $CONF/tmux.conf $HOME/.tmux.conf
-ln -s $CONF/tmux $HOME/.tmux
-ln -s $CONF/vimrc $HOME/.vimrc
-ln -s $CONF/vim $HOME/.vim
+ensure_link() {
+  local src="$1"
+  local dest="$2"
+  ln -sfn "$src" "$dest"
+}
+
+remove_if_link() {
+  local dest="$1"
+  local expected_prefix="$2"
+  if [ -L "$dest" ]; then
+    local target
+    target="$(readlink "$dest")"
+    case "$target" in
+      "$expected_prefix"/*) rm -f "$dest" ;;
+    esac
+  fi
+}
+
+if [ "$UPDATE_ONLY" = false ]; then
+  rm -f "$HOME/.bash_profile"
+  rm -f "$HOME/.bashrc"
+  rm -f "$HOME/bin"
+  rm -f "$HOME/.perltidyrc"
+  rm -f "$HOME/.perlcriticrc"
+  rm -f "$HOME/.profile"
+  rm -f "$HOME/.tmux.conf"
+  rm -f "$HOME/.tmux"
+  rm -f "$HOME/.vimrc"
+  rm -f "$HOME/.vim"
+fi
+
+ensure_link "$CONF/bash_profile" "$HOME/.bash_profile"
+ensure_link "$CONF/bash/bashrc" "$HOME/.bashrc"
+ensure_link "$CONF/bin" "$HOME/bin"
+ensure_link "$CONF/profile" "$HOME/.profile"
+
+if command -v perltidy >/dev/null 2>&1; then
+  ensure_link "$CONF/perltidyrc" "$HOME/.perltidyrc"
+else
+  remove_if_link "$HOME/.perltidyrc" "$CONF"
+fi
+
+if command -v perlcritic >/dev/null 2>&1; then
+  ensure_link "$CONF/perlcriticrc" "$HOME/.perlcriticrc"
+else
+  remove_if_link "$HOME/.perlcriticrc" "$CONF"
+fi
+
+if command -v tmux >/dev/null 2>&1; then
+  ensure_link "$CONF/tmux.conf" "$HOME/.tmux.conf"
+  ensure_link "$CONF/tmux" "$HOME/.tmux"
+else
+  remove_if_link "$HOME/.tmux.conf" "$CONF"
+  remove_if_link "$HOME/.tmux" "$CONF"
+fi
+
+if command -v vim >/dev/null 2>&1; then
+  ensure_link "$CONF/vimrc" "$HOME/.vimrc"
+  ensure_link "$CONF/vim" "$HOME/.vim"
+else
+  remove_if_link "$HOME/.vimrc" "$CONF"
+  remove_if_link "$HOME/.vim" "$CONF"
+fi
+
+if command -v nvim >/dev/null 2>&1; then
+  mkdir -p "$HOME/.config"
+  ensure_link "$CONF/nvim" "$HOME/.config/nvim"
+else
+  remove_if_link "$HOME/.config/nvim" "$CONF"
+fi
+
+if [ "${BASH_SOURCE[0]}" != "$0" ]; then
+  if [ -f "$HOME/.bashrc" ]; then
+    . "$HOME/.bashrc"
+  fi
+else
+  echo "Run: source $0${UPDATE_ONLY:+ --update}"
+fi

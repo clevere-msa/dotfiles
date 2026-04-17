@@ -11,6 +11,8 @@ vim.filetype.add({
   extension = {
     plx = "perl",
     cgi = "perl",
+    -- Oracle Pro*C (commonly `.pc`). Treat as C for syntax/LSP (clangd).
+    pc = "c",
     -- Add any other specific extensions here
   },
 })
