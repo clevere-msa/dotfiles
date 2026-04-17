@@ -1,0 +1,218 @@
+#!/usr/bin/env bash
+# Minimal Codex wrapper.
+# Keeps only:
+# - bash/sourcing guard
+# - real binary resolution
+# - recursion protection
+# - --no-wrapper escape hatch
+# - default Codex flags unless explicitly overridden
+
+if [ -z "${BASH_VERSION:-}" ]; then
+  exec /usr/bin/env bash "$0" "$@"
+fi
+if [[ "${BASH_SOURCE[0]}" != "$0" ]]; then
+  printf '%s\n' "ERROR: do not source this script; run it as a command." >&2
+  return 2
+fi
+
+set -euo pipefail
+set +x
+
+usage() {
+  cat >&2 <<'EOF_USAGE'
+Usage: codex [wrapper-options] -- [codex args...]
+
+Wrapper options:
+  --wrapper-help | --help-wrapper
+      Show this wrapper help.
+  --dry-run
+      Print the real command and exit.
+
+Notes:
+  - --no-wrapper bypasses all wrapper logic.
+  - Wrapper defaults to --full-auto unless CODEX_FORCE_FULL_AUTO=0.
+  - Wrapper defaults to -s workspace-write unless you already set -s/--sandbox.
+  - Wrapper defaults to -a on-failure unless full-auto is active or you already set approval flags.
+  - Extra readable roots come from CODEX_DEFAULT_ADD_DIRS or ~/.codex/add_dirs.txt.
+EOF_USAGE
+}
+
+err() {
+  printf 'ERROR: %s\n' "$*" >&2
+}
+
+log() {
+  printf '%s\n' "$*" >&2
+}
+
+resolve_self() {
+  readlink -f "$1" 2>/dev/null || realpath "$1"
+}
+
+find_real_codex() {
+  local wrapper_path real real_path user_codex user_codex_path
+
+  if [[ -n "${CODEX_REAL_BIN:-}" ]]; then
+    printf '%s\n' "$CODEX_REAL_BIN"
+    return 0
+  fi
+
+  wrapper_path="$(resolve_self "$0")"
+  user_codex="$HOME/.local/bin/codex"
+  if [[ -x "$user_codex" ]]; then
+    user_codex_path="$(resolve_self "$user_codex")"
+    if [[ "$user_codex_path" != "$wrapper_path" ]]; then
+      printf '%s\n' "$user_codex"
+      return 0
+    fi
+  fi
+
+  real="$(command -v codex || true)"
+  if [[ -z "$real" ]]; then
+    err "cannot locate 'codex' in PATH. Set CODEX_REAL_BIN to the real codex binary path."
+    exit 127
+  fi
+
+  real_path="$(resolve_self "$real")"
+  if [[ "$real_path" == "$wrapper_path" ]]; then
+    err "'codex' resolves to this wrapper. Set CODEX_REAL_BIN to the real codex binary path."
+    exit 2
+  fi
+
+  printf '%s\n' "$real"
+}
+
+if [[ "${1:-}" == "--no-wrapper" ]]; then
+  shift
+  REAL_CODEX="$(find_real_codex)"
+  exec "$REAL_CODEX" "$@"
+fi
+
+REAL_CODEX="$(find_real_codex)"
+if [[ ! -x "$REAL_CODEX" ]]; then
+  err "real codex is not executable: $REAL_CODEX"
+  exit 2
+fi
+
+DEPTH="${CODEX_WRAPPER_DEPTH:-0}"
+if ! [[ "$DEPTH" =~ ^[0-9]+$ ]]; then
+  DEPTH=0
+fi
+if (( DEPTH >= 1 )); then
+  err "codex wrapper recursion detected (CODEX_WRAPPER_DEPTH=$DEPTH). Use --no-wrapper or set CODEX_REAL_BIN."
+  exit 3
+fi
+export CODEX_WRAPPER_DEPTH=$((DEPTH + 1))
+
+has_arg() {
+  local needle="$1"
+  shift
+  local arg
+  for arg in "$@"; do
+    if [[ "$arg" == "$needle" ]]; then
+      return 0
+    fi
+  done
+  return 1
+}
+
+WRAPPER_HELP=0
+DRY_RUN=0
+CODEX_ARGS=()
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --wrapper-help|--help-wrapper)
+      WRAPPER_HELP=1
+      shift
+      ;;
+    --dry-run)
+      DRY_RUN=1
+      shift
+      ;;
+    --)
+      shift
+      CODEX_ARGS+=("$@")
+      break
+      ;;
+    *)
+      CODEX_ARGS+=("$1")
+      shift
+      ;;
+  esac
+done
+
+if (( WRAPPER_HELP )); then
+  usage
+  exit 0
+fi
+
+DEFAULT_ARGS=()
+USE_FULL_AUTO=0
+if has_arg "--full-auto" "${CODEX_ARGS[@]}" || has_arg "--dangerously-bypass-approvals-and-sandbox" "${CODEX_ARGS[@]}"; then
+  USE_FULL_AUTO=1
+fi
+if [[ "${CODEX_FORCE_FULL_AUTO:-1}" == "1" ]] && (( ! USE_FULL_AUTO )); then
+  DEFAULT_ARGS+=("--full-auto")
+  USE_FULL_AUTO=1
+fi
+
+if ! has_arg "-s" "${CODEX_ARGS[@]}" && ! has_arg "--sandbox" "${CODEX_ARGS[@]}" \
+  && ! has_arg "--dangerously-bypass-approvals-and-sandbox" "${CODEX_ARGS[@]}"; then
+  DEFAULT_SANDBOX_MODE="${CODEX_DEFAULT_SANDBOX_MODE:-workspace-write}"
+  DEFAULT_ARGS+=("-s" "$DEFAULT_SANDBOX_MODE")
+fi
+
+DEFAULT_ADD_DIRS="${CODEX_DEFAULT_ADD_DIRS:-}"
+DEFAULT_ADD_DIRS_FILE="${CODEX_DEFAULT_ADD_DIRS_FILE:-$HOME/.codex/add_dirs.txt}"
+if [[ -z "$DEFAULT_ADD_DIRS" && -f "$DEFAULT_ADD_DIRS_FILE" ]]; then
+  while IFS= read -r line || [[ -n "$line" ]]; do
+    line="${line%%#*}"
+    line="$(printf '%s' "$line" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')"
+    [[ -z "$line" ]] && continue
+    if [[ -z "$DEFAULT_ADD_DIRS" ]]; then
+      DEFAULT_ADD_DIRS="$line"
+    else
+      DEFAULT_ADD_DIRS+=",$line"
+    fi
+  done < "$DEFAULT_ADD_DIRS_FILE"
+fi
+if [[ -n "$DEFAULT_ADD_DIRS" ]]; then
+  declare -A ADD_DIR_PRESENT=()
+  for ((i=0; i<${#CODEX_ARGS[@]}; i++)); do
+    arg="${CODEX_ARGS[$i]}"
+    if [[ "$arg" == "--add-dir" ]]; then
+      next="${CODEX_ARGS[$((i + 1))]:-}"
+      if [[ -n "$next" ]]; then
+        ADD_DIR_PRESENT["$next"]=1
+      fi
+    elif [[ "$arg" == --add-dir=* ]]; then
+      ADD_DIR_PRESENT["${arg#--add-dir=}"]=1
+    fi
+  done
+
+  IFS=',' read -r -a ADD_DIRS <<< "$DEFAULT_ADD_DIRS"
+  for add_dir in "${ADD_DIRS[@]}"; do
+    add_dir="$(printf '%s' "$add_dir" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')"
+    [[ -z "$add_dir" ]] && continue
+    if [[ -z "${ADD_DIR_PRESENT[$add_dir]+_}" ]]; then
+      DEFAULT_ARGS+=("--add-dir" "$add_dir")
+    fi
+  done
+fi
+
+if (( ! USE_FULL_AUTO )) && ! has_arg "-a" "${CODEX_ARGS[@]}" && ! has_arg "--ask-for-approval" "${CODEX_ARGS[@]}" \
+  && ! has_arg "--dangerously-bypass-approvals-and-sandbox" "${CODEX_ARGS[@]}"; then
+  DEFAULT_APPROVAL_POLICY="${CODEX_DEFAULT_APPROVAL_POLICY:-on-failure}"
+  DEFAULT_ARGS+=("-a" "$DEFAULT_APPROVAL_POLICY")
+fi
+
+FINAL_ARGS=("${DEFAULT_ARGS[@]}" "${CODEX_ARGS[@]}")
+
+if (( DRY_RUN )); then
+  log "DRY RUN: real codex: $REAL_CODEX"
+  log "DRY RUN: codex args: ${FINAL_ARGS[*]}"
+  exit 0
+fi
+
+exec "$REAL_CODEX" "${FINAL_ARGS[@]}"
