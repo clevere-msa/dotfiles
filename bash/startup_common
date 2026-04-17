@@ -76,3 +76,4 @@ export NVM_DIR="$HOME/.nvm"
 
 PS1="${green}[\d \t]\n${cyan}\u@${MACHINE}:${green}\w\n${yellow}\!.${NC} "
 eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)"
+export PATH="/home/linuxbrew/.linuxbrew/opt/tfenv/bin:$PATH"
