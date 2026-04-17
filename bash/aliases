@@ -65,11 +65,46 @@ alias tree="tree -Cs"     # alternative to "ls"
 
 # Git
 alias ga="git add"
-alias gco="git commit"
+alias gco="$HOME/agent-scripts/scripts/committer"
 alias gp="git push"
 alias gf="git fetch"
 alias gl="git log"
 alias gs="git status"
+alias gcommit="SKIP_COMMITTER_HOOK=1 git commit"
+alias committer="$HOME/agent-scripts/scripts/committer"
+alias codexpromptsync="$HOME/dotfiles/bin/codex-sync-prompts"
+
+function awslogin {
+    aws sso login --use-device-code "$@"
+}
+
+function docslist {
+    local script="$HOME/agent-scripts/scripts/docs-list.ts"
+    if command -v bun >/dev/null 2>&1; then
+        bun "$script"
+    elif command -v tsx >/dev/null 2>&1; then
+        tsx "$script"
+    elif command -v npx >/dev/null 2>&1; then
+        npx --no-install tsx "$script"
+    else
+        echo "docslist: install bun or tsx to run ${script}" >&2
+        return 1
+    fi
+}
+
+function btools {
+    local script="$HOME/agent-scripts/scripts/browser-tools.ts"
+    if command -v ts-node >/dev/null 2>&1; then
+        ts-node "$script" "$@"
+    elif command -v bun >/dev/null 2>&1; then
+        bun "$script" "$@"
+    elif command -v npx >/dev/null 2>&1; then
+        npx --no-install ts-node "$script" "$@"
+    else
+        echo "btools: install ts-node or bun to run ${script}" >&2
+        return 1
+    fi
+}
 
 # tmux
 alias ta="tmux attach"
@@ -81,6 +116,8 @@ alias splh="export PERL5LIB=${PWD}:/project/users/$LOGNAME/lib/perl5; set | grep
 alias reperl="perl -de0"
 
 alias csc="sudo -u root /usr/local/bin/shell-run-env.plx fw_object_cache.plx -p shell -t all -i all -d"
+
+alias ba="/usr/local/bin/bounce-apache.sh"
 
 function ws {
     ROOT="/project/users/$LOGNAME"

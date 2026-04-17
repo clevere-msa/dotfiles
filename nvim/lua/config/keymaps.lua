@@ -13,6 +13,9 @@ map("n", "<C-Right>", "<C-w>l", { desc = "Go to right window" })
 -- Buffer management
 map("n", "zz", "<cmd>bp<bar>sp<bar>bn<bar>bd<CR>", { desc = "Close buffer without closing window" })
 
+-- Window splitting
+map("n", "<F7>", "<cmd>vsplit<CR>", { desc = "Vertical split" })
+
 -- Perl: Format with perltidy on F9
 map("n", "<F9>", function()
   if vim.bo.filetype == "perl" then

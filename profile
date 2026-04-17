@@ -8,3 +8,15 @@ case $- in
       fi
     fi
 esac
+
+if [ -f "$HOME/mcp_bootstrap/bin/env" ]; then
+  . "$HOME/mcp_bootstrap/bin/env"
+fi
+
+if [ -f "$HOME/.local/bin/env" ]; then
+  . "$HOME/.local/bin/env"
+fi
+
+if [ -f "$HOME/dotfiles/bash/secret-env.sh" ]; then
+  . "$HOME/dotfiles/bash/secret-env.sh"
+fi
