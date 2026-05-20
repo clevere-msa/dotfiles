@@ -2,6 +2,12 @@
 
 # Common interactive shell setup for bash_profile and bashrc.
 
+# Non-interactive shells are used by MCP wrappers like `bash -lc 'exec ...'`.
+# They must not emit prompt/color/alias output on stdout or alter startup flow.
+if [[ $- != *i* ]]; then
+  return
+fi
+
 # User specific environment and startup programs
 export MACHINE="$(hostname -s 2>/dev/null || hostname)"
 export HOME="/home/$LOGNAME"
