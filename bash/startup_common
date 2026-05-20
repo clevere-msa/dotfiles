@@ -60,6 +60,16 @@ export BEL="\007"
 export LS_OPTIONS='--color=auto'
 eval "$(dircolors -b "$HOME/dotfiles/bash/dir_colors")"
 
+export NVM_DIR="$HOME/.nvm"
+[ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
+eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)"
+export PATH="/home/linuxbrew/.linuxbrew/opt/tfenv/bin:$PATH"
+
+case $- in
+  *i*) ;;
+  *) return 0 ;;
+esac
+
 # User specific aliases and functions
 . "$HOME/dotfiles/bash/completion"
 
@@ -71,9 +81,4 @@ eval "$(dircolors -b "$HOME/dotfiles/bash/dir_colors")"
 PROMPT_COMMAND='printf ${ESC}]2;${LOGNAME}@${MACHINE}:${BEL}'
 PROMPT_COMMAND="$PROMPT_COMMAND; history -a"
 
-export NVM_DIR="$HOME/.nvm"
-[ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
-
 PS1="${green}[\d \t]\n${cyan}\u@${MACHINE}:${green}\w\n${yellow}\!.${NC} "
-eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)"
-export PATH="/home/linuxbrew/.linuxbrew/opt/tfenv/bin:$PATH"
