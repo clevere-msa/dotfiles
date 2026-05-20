@@ -1,0 +1,308 @@
+#!/usr/bin/env bash
+set -euo pipefail
+set +x
+
+SERVICE_TEMPLATE="fast-playwright-mcp@"
+UNIT_PATH="${HOME}/.config/systemd/user/fast-playwright-mcp@.service"
+
+PORT_MIN=8231
+PORT_MAX=8299
+
+usage() {
+  cat <<EOF
+pw-mcpctl: manage fast-playwright-mcp systemd user instances by port
+
+Core:
+  pw-mcpctl ensure-unit
+  pw-mcpctl start PORT [COUNT]
+  pw-mcpctl stop PORT [COUNT]
+  pw-mcpctl restart PORT [COUNT]
+  pw-mcpctl status PORT
+  pw-mcpctl logs PORT
+  pw-mcpctl list
+
+Allocation (range ${PORT_MIN}-${PORT_MAX}):
+  pw-mcpctl alloc COUNT [--no-start]
+  pw-mcpctl release PORT [COUNT]
+
+Codex helpers:
+  pw-mcpctl emit-toml PORT [COUNT]
+  pw-mcpctl emit-codex PORT [COUNT]
+
+Notes:
+  - PORT is the instance id (e.g., 8931 => fast-playwright-mcp@8931.service)
+  - COUNT starts/stops a consecutive range: PORT..PORT+COUNT-1
+  - alloc finds COUNT free ports in ${PORT_MIN}-${PORT_MAX} not currently in use and (by default) starts them.
+EOF
+}
+
+require_systemd_user() {
+  command -v systemctl >/dev/null 2>&1 || {
+    echo "systemctl not found" >&2
+    exit 1
+  }
+}
+
+ensure_unit_exists() {
+  if [[ ! -f "$UNIT_PATH" ]]; then
+    echo "ERROR: Missing unit file: $UNIT_PATH" >&2
+    echo "Create ~/.config/systemd/user/fast-playwright-mcp@.service first." >&2
+    exit 2
+  fi
+}
+
+is_int() { [[ "${1:-}" =~ ^[0-9]+$ ]]; }
+
+range_ports() {
+  local start="$1"
+  local count="${2:-1}"
+  is_int "$start" && is_int "$count" || {
+    echo "ERROR: PORT/COUNT must be integers" >&2
+    exit 2
+  }
+  ((count >= 1)) || {
+    echo "ERROR: COUNT must be >= 1" >&2
+    exit 2
+  }
+  local end=$((start + count - 1))
+  for ((p = start; p <= end; p++)); do
+    echo "$p"
+  done
+}
+
+# Returns 0 if port is listening, 1 otherwise.
+port_in_use() {
+  local p="$1"
+  if command -v ss >/dev/null 2>&1; then
+    ss -ltn "( sport = :$p )" 2>/dev/null | grep -q ":$p"
+  else
+    # Fallback
+    netstat -ltn 2>/dev/null | awk '{print $4}' | grep -q ":$p$"
+  fi
+}
+
+# Returns 0 if systemd instance is active, 1 otherwise.
+service_active() {
+  local p="$1"
+  systemctl --user is-active --quiet "${SERVICE_TEMPLATE}${p}.service"
+}
+
+cmd_ensure_unit() {
+  require_systemd_user
+  ensure_unit_exists
+  systemctl --user daemon-reload
+  echo "OK: systemd user unit loaded"
+}
+
+cmd_start() {
+  require_systemd_user
+  ensure_unit_exists
+  local port="${1:-}"
+  local count="${2:-1}"
+  [[ -n "$port" ]] || {
+    usage
+    exit 2
+  }
+
+  systemctl --user daemon-reload
+
+  while read -r p; do
+    systemctl --user enable --now "${SERVICE_TEMPLATE}${p}.service"
+    echo "Started ${SERVICE_TEMPLATE}${p}.service  (http://127.0.0.1:${p}/mcp)"
+  done < <(range_ports "$port" "$count")
+}
+
+cmd_stop() {
+  require_systemd_user
+  local port="${1:-}"
+  local count="${2:-1}"
+  [[ -n "$port" ]] || {
+    usage
+    exit 2
+  }
+
+  while read -r p; do
+    systemctl --user disable --now "${SERVICE_TEMPLATE}${p}.service" || true
+    echo "Stopped ${SERVICE_TEMPLATE}${p}.service"
+  done < <(range_ports "$port" "$count")
+}
+
+cmd_restart() {
+  require_systemd_user
+  ensure_unit_exists
+  local port="${1:-}"
+  local count="${2:-1}"
+  [[ -n "$port" ]] || {
+    usage
+    exit 2
+  }
+
+  systemctl --user daemon-reload
+
+  while read -r p; do
+    systemctl --user restart "${SERVICE_TEMPLATE}${p}.service"
+    echo "Restarted ${SERVICE_TEMPLATE}${p}.service"
+  done < <(range_ports "$port" "$count")
+}
+
+cmd_status() {
+  require_systemd_user
+  local port="${1:-}"
+  [[ -n "$port" ]] || {
+    usage
+    exit 2
+  }
+  systemctl --user status "${SERVICE_TEMPLATE}${port}.service" --no-pager
+}
+
+cmd_logs() {
+  require_systemd_user
+  local port="${1:-}"
+  [[ -n "$port" ]] || {
+    usage
+    exit 2
+  }
+  journalctl --user -u "${SERVICE_TEMPLATE}${port}.service" -n 200 --no-pager
+}
+
+cmd_list() {
+  require_systemd_user
+  systemctl --user list-units --type=service --state=running | grep -E 'fast-playwright-mcp@' || true
+}
+
+find_free_ports() {
+  local need="$1"
+  is_int "$need" || {
+    echo "ERROR: COUNT must be an integer" >&2
+    exit 2
+  }
+  ((need >= 1)) || {
+    echo "ERROR: COUNT must be >= 1" >&2
+    exit 2
+  }
+
+  local found=0
+  for ((p = PORT_MIN; p <= PORT_MAX; p++)); do
+    # Consider "in use" if either a listener exists or the service is active.
+    if port_in_use "$p"; then
+      continue
+    fi
+    if service_active "$p"; then
+      continue
+    fi
+    echo "$p"
+    found=$((found + 1))
+    if ((found >= need)); then
+      return 0
+    fi
+  done
+
+  echo "ERROR: Not enough free ports in ${PORT_MIN}-${PORT_MAX} to allocate ${need}" >&2
+  exit 3
+}
+
+cmd_alloc() {
+  require_systemd_user
+  ensure_unit_exists
+  local count="${1:-}"
+  local no_start=0
+  shift || true
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+    --no-start) no_start=1 ;;
+    *)
+      echo "Unknown option: $1" >&2
+      usage
+      exit 2
+      ;;
+    esac
+    shift
+  done
+
+  [[ -n "$count" ]] || {
+    usage
+    exit 2
+  }
+
+  mapfile -t ports < <(find_free_ports "$count")
+
+  echo "Allocated ports: ${ports[*]}"
+  if ((no_start == 1)); then
+    return 0
+  fi
+
+  systemctl --user daemon-reload
+  for p in "${ports[@]}"; do
+    systemctl --user enable --now "${SERVICE_TEMPLATE}${p}.service"
+    echo "Started ${SERVICE_TEMPLATE}${p}.service  (http://127.0.0.1:${p}/mcp)"
+  done
+}
+
+cmd_release() {
+  cmd_stop "$@"
+}
+
+cmd_emit_toml() {
+  local port="${1:-}"
+  local count="${2:-1}"
+  [[ -n "$port" ]] || {
+    usage
+    exit 2
+  }
+
+  while read -r p; do
+    cat <<EOF
+[mcp_servers.fp_${p}]
+url = "http://127.0.0.1:${p}/mcp"
+startup_timeout_sec = 5
+tool_timeout_sec = 180
+
+EOF
+  done < <(range_ports "$port" "$count")
+}
+
+cmd_emit_codex() {
+  local port="${1:-}"
+  local count="${2:-1}"
+  [[ -n "$port" ]] || {
+    usage
+    exit 2
+  }
+
+  # Emit one codex command per port, with explicit enables for that one server.
+  # Disabling others must be explicit by name; Codex does not reliably support wildcards across builds.
+  while read -r p; do
+    cat <<EOF
+codex \\
+  --config 'mcp_servers.fp_${p}.enabled=true'
+EOF
+    echo
+  done < <(range_ports "$port" "$count")
+}
+
+main() {
+  local cmd="${1:-}"
+  shift || true
+
+  case "$cmd" in
+  ensure-unit) cmd_ensure_unit "$@" ;;
+  start) cmd_start "$@" ;;
+  stop) cmd_stop "$@" ;;
+  restart) cmd_restart "$@" ;;
+  status) cmd_status "$@" ;;
+  logs) cmd_logs "$@" ;;
+  list) cmd_list "$@" ;;
+  alloc) cmd_alloc "$@" ;;
+  release) cmd_release "$@" ;;
+  emit-toml) cmd_emit_toml "$@" ;;
+  emit-codex) cmd_emit_codex "$@" ;;
+  "" | help | -h | --help) usage ;;
+  *)
+    echo "Unknown command: $cmd" >&2
+    usage
+    exit 2
+    ;;
+  esac
+}
+
+main "$@"

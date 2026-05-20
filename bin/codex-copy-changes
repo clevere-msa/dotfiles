@@ -1,0 +1,135 @@
+#!/usr/bin/env bash
+set -euo pipefail
+set +x
+
+usage() {
+  cat >&2 <<'EOF'
+codex-copy-changes: copy only files changed in the current Codex session
+
+Usage:
+  codex-copy-changes --src SRC --dst DST [options]
+
+Options:
+  --changed-file FILE   File with tab-delimited "root<TAB>relative_path" entries
+                        (default: $CODEX_RUNS_DIR/changed_files.txt)
+  --allow-prefix LIST   Comma-separated list of allowed path prefixes
+                        (default: bin/,perl-lib/,web/cgi-bin/,etc/,config/,web/object-config/)
+  --allow-any           Disable prefix filtering (copy any changed file under SRC)
+  -n, --dry-run         Show what would be copied
+  -h, --help            Show this help
+
+Notes:
+  - Copies only files listed for SRC root.
+  - Preserves relative paths under DST.
+EOF
+}
+
+SRC=""
+DST=""
+CHANGED_FILE="${CODEX_CHANGED_FILES_FILE:-}"
+ALLOW_PREFIXES="bin/,perl-lib/,web/cgi-bin/,etc/,config/,web/object-config/"
+ALLOW_ANY=0
+DRY_RUN=0
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --src)
+      SRC="${2:-}"
+      shift 2
+      ;;
+    --dst)
+      DST="${2:-}"
+      shift 2
+      ;;
+    --changed-file)
+      CHANGED_FILE="${2:-}"
+      shift 2
+      ;;
+    --allow-prefix)
+      ALLOW_PREFIXES="${2:-}"
+      shift 2
+      ;;
+    --allow-any)
+      ALLOW_ANY=1
+      shift
+      ;;
+    -n|--dry-run)
+      DRY_RUN=1
+      shift
+      ;;
+    -h|--help)
+      usage
+      exit 0
+      ;;
+    *)
+      echo "Unknown option: $1" >&2
+      usage
+      exit 2
+      ;;
+  esac
+done
+
+if [[ -z "$SRC" || -z "$DST" ]]; then
+  echo "ERROR: --src and --dst are required" >&2
+  usage
+  exit 2
+fi
+
+if [[ -z "$CHANGED_FILE" && -n "${CODEX_RUNS_DIR:-}" ]]; then
+  CHANGED_FILE="${CODEX_RUNS_DIR}/changed_files.txt"
+fi
+
+if [[ -z "$CHANGED_FILE" ]]; then
+  echo "ERROR: changed files list not specified and CODEX_RUNS_DIR is empty" >&2
+  exit 2
+fi
+
+if [[ ! -f "$CHANGED_FILE" ]]; then
+  echo "ERROR: changed files list not found: $CHANGED_FILE" >&2
+  exit 1
+fi
+
+declare -a PREFIXES=()
+IFS=',' read -r -a PREFIXES <<< "$ALLOW_PREFIXES"
+
+copy_one() {
+  local rel="$1"
+  local src_file="$SRC/$rel"
+  local dst_file="$DST/$rel"
+  if [[ ! -f "$src_file" ]]; then
+    echo "WARN: missing source file: $src_file" >&2
+    return 0
+  fi
+  if (( DRY_RUN )); then
+    printf 'Would copy: %s -> %s\n' "$src_file" "$dst_file"
+    return 0
+  fi
+  mkdir -p "$(dirname "$dst_file")"
+  cp -p "$src_file" "$dst_file"
+  printf 'Copied: %s\n' "$rel"
+}
+
+allowed_relpath() {
+  local rel="$1"
+  if (( ALLOW_ANY )); then
+    return 0
+  fi
+  local prefix
+  for prefix in "${PREFIXES[@]}"; do
+    [[ -z "$prefix" ]] && continue
+    if [[ "$rel" == "$prefix"* ]]; then
+      return 0
+    fi
+  done
+  return 1
+}
+
+while IFS=$'\t' read -r root rel || [[ -n "$root" ]]; do
+  [[ -z "$root" || -z "$rel" ]] && continue
+  if [[ "$root" != "$SRC" ]]; then
+    continue
+  fi
+  if allowed_relpath "$rel"; then
+    copy_one "$rel"
+  fi
+done < "$CHANGED_FILE"

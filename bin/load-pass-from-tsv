@@ -1,0 +1,107 @@
+#!/usr/bin/env bash
+set -euo pipefail
+set +x
+
+usage() {
+  cat >&2 <<'EOF'
+load-pass-from-tsv: load pass entries from a TAB-delimited file
+
+Usage:
+  load-pass-from-tsv [--force] [--dry-run] [--quiet] FILE
+
+Input format (one entry per line):
+  pass/path<TAB>password
+
+Options:
+  -f, --force     Overwrite existing pass entries
+  -n, --dry-run   Show paths that would be written
+  -q, --quiet     Suppress per-entry success output
+  -h, --help      Show this help
+EOF
+}
+
+DRY_RUN=0
+FORCE=0
+QUIET=0
+INPUT_FILE=""
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    -f|--force)
+      FORCE=1
+      shift
+      ;;
+    -n|--dry-run)
+      DRY_RUN=1
+      shift
+      ;;
+    -q|--quiet)
+      QUIET=1
+      shift
+      ;;
+    -h|--help)
+      usage
+      exit 0
+      ;;
+    -*)
+      echo "Unknown option: $1" >&2
+      usage
+      exit 2
+      ;;
+    *)
+      if [[ -n "$INPUT_FILE" ]]; then
+        echo "ERROR: only one input file is supported" >&2
+        exit 2
+      fi
+      INPUT_FILE="$1"
+      shift
+      ;;
+  esac
+done
+
+if [[ -z "$INPUT_FILE" ]]; then
+  echo "ERROR: missing input file" >&2
+  usage
+  exit 2
+fi
+
+if [[ ! -f "$INPUT_FILE" ]]; then
+  echo "ERROR: input file not found: $INPUT_FILE" >&2
+  exit 1
+fi
+
+if ! command -v pass >/dev/null 2>&1; then
+  echo "ERROR: pass is not installed or not on PATH" >&2
+  exit 1
+fi
+
+while IFS=$'\t' read -r raw_path raw_password; do
+  if [[ -z "${raw_path:-}" ]]; then
+    continue
+  fi
+  if [[ "${raw_path:0:1}" == "#" ]]; then
+    continue
+  fi
+
+  pass_path="${raw_path%%$'\r'}"
+  pass_password="${raw_password%%$'\r'}"
+
+  if [[ -z "$pass_password" ]]; then
+    echo "ERROR: missing password for path: $pass_path" >&2
+    exit 1
+  fi
+
+  if (( DRY_RUN )); then
+    printf 'Would insert: %s\n' "$pass_path"
+    continue
+  fi
+
+  if (( FORCE )); then
+    printf '%s\n' "$pass_password" | pass insert -m --force "$pass_path" >/dev/null
+  else
+    printf '%s\n' "$pass_password" | pass insert -m "$pass_path" >/dev/null
+  fi
+  if (( QUIET == 0 )); then
+    printf 'Inserted: %s\n' "$pass_path"
+  fi
+done < "$INPUT_FILE"

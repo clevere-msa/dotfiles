@@ -1,0 +1,211 @@
+#!/usr/bin/env bash
+set -euo pipefail
+set +x
+
+usage() {
+  cat >&2 <<'EOF'
+codex-deploy-sync: copy Codex-changed files from a deploy dir into a mapped repo,
+update CHANGELOG/TESTS, and commit/push.
+
+Usage:
+  codex-deploy-sync --deploy NAME --ticket TM-123 [options]
+  codex-deploy-sync --deploy /project/aviation --repo /project/users/clevere/branded --ticket 123
+
+Options:
+  --deploy NAME|PATH   Deploy dir name (under /project) or absolute path
+  --repo PATH          Target repo path (overrides mapping file)
+  --map FILE           Mapping file (default: $HOME/.codex/deploy_repo_map.txt)
+  --ticket ID          Jira ticket (e.g., TM-123 or 123)
+  --test-cmd CMD       Optional test command to run in deploy dir
+  --changed-file FILE  Changed files list (default: $CODEX_RUNS_DIR/changed_files.txt)
+  --allow-any          Copy any changed file (disable prefix filtering)
+  -n, --dry-run        Show planned actions without changes
+  --no-commit          Do not commit
+  --no-push            Do not push
+  -h, --help           Show this help
+
+Default branch format: aws-tm-### (e.g., aws-tm-123)
+EOF
+}
+
+DEPLOY_ARG=""
+REPO_PATH=""
+MAP_FILE="${CODEX_DEPLOY_REPO_MAP_FILE:-$HOME/.codex/deploy_repo_map.txt}"
+TICKET=""
+TEST_CMD=""
+CHANGED_FILE="${CODEX_CHANGED_FILES_FILE:-}"
+ALLOW_ANY=0
+DRY_RUN=0
+DO_COMMIT=1
+DO_PUSH=1
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --deploy)
+      DEPLOY_ARG="${2:-}"
+      shift 2
+      ;;
+    --repo)
+      REPO_PATH="${2:-}"
+      shift 2
+      ;;
+    --map)
+      MAP_FILE="${2:-}"
+      shift 2
+      ;;
+    --ticket)
+      TICKET="${2:-}"
+      shift 2
+      ;;
+    --test-cmd)
+      TEST_CMD="${2:-}"
+      shift 2
+      ;;
+    --changed-file)
+      CHANGED_FILE="${2:-}"
+      shift 2
+      ;;
+    --allow-any)
+      ALLOW_ANY=1
+      shift
+      ;;
+    -n|--dry-run)
+      DRY_RUN=1
+      shift
+      ;;
+    --no-commit)
+      DO_COMMIT=0
+      shift
+      ;;
+    --no-push)
+      DO_PUSH=0
+      shift
+      ;;
+    -h|--help)
+      usage
+      exit 0
+      ;;
+    *)
+      echo "Unknown option: $1" >&2
+      usage
+      exit 2
+      ;;
+  esac
+done
+
+if [[ -z "$DEPLOY_ARG" || -z "$TICKET" ]]; then
+  echo "ERROR: --deploy and --ticket are required" >&2
+  usage
+  exit 2
+fi
+
+normalize_ticket() {
+  local raw="$1"
+  raw="$(printf '%s' "$raw" | tr '[:upper:]' '[:lower:]' | tr -d '[:space:]')"
+  if [[ "$raw" =~ ^[0-9]+$ ]]; then
+    raw="tm-${raw}"
+  fi
+  raw="$(printf '%s' "$raw" | sed 's/[^a-z0-9._-]/-/g')"
+  printf '%s' "$raw"
+}
+
+TICKET_NORM="$(normalize_ticket "$TICKET")"
+BRANCH="aws-${TICKET_NORM}"
+
+SRC_PATH=""
+if [[ "$DEPLOY_ARG" == /* ]]; then
+  SRC_PATH="$DEPLOY_ARG"
+else
+  SRC_PATH="/project/$DEPLOY_ARG"
+fi
+
+if [[ -z "$REPO_PATH" && -f "$MAP_FILE" ]]; then
+  while IFS=$'\t' read -r map_deploy map_repo || [[ -n "$map_deploy" ]]; do
+    map_deploy="${map_deploy%%#*}"
+    map_deploy="$(printf '%s' "$map_deploy" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')"
+    map_repo="$(printf '%s' "$map_repo" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')"
+    [[ -z "$map_deploy" || -z "$map_repo" ]] && continue
+    if [[ "$DEPLOY_ARG" == "$map_deploy" || "$SRC_PATH" == "$map_deploy" ]]; then
+      REPO_PATH="$map_repo"
+      break
+    fi
+  done < "$MAP_FILE"
+fi
+
+if [[ -z "$REPO_PATH" ]]; then
+  echo "ERROR: target repo not resolved; use --repo or update $MAP_FILE" >&2
+  exit 2
+fi
+
+if [[ -z "$CHANGED_FILE" && -n "${CODEX_RUNS_DIR:-}" ]]; then
+  CHANGED_FILE="${CODEX_RUNS_DIR}/changed_files.txt"
+fi
+
+if [[ -z "$CHANGED_FILE" ]]; then
+  echo "ERROR: changed files list not specified and CODEX_RUNS_DIR is empty" >&2
+  exit 2
+fi
+
+if [[ ! -d "$SRC_PATH" ]]; then
+  echo "ERROR: deploy path not found: $SRC_PATH" >&2
+  exit 1
+fi
+
+if [[ ! -d "$REPO_PATH" ]]; then
+  echo "ERROR: repo path not found: $REPO_PATH" >&2
+  exit 1
+fi
+
+if (( DRY_RUN )); then
+  printf 'Deploy: %s\n' "$SRC_PATH"
+  printf 'Repo:   %s\n' "$REPO_PATH"
+  printf 'Branch: %s\n' "$BRANCH"
+fi
+
+if [[ -n "$TEST_CMD" ]]; then
+  if (( DRY_RUN )); then
+    printf 'Would run tests: (cd %s && %s)\n' "$SRC_PATH" "$TEST_CMD"
+  else
+    (cd "$SRC_PATH" && bash -lc "$TEST_CMD")
+  fi
+fi
+
+COPY_ARGS=(--src "$SRC_PATH" --dst "$REPO_PATH" --changed-file "$CHANGED_FILE")
+if (( ALLOW_ANY )); then
+  COPY_ARGS+=(--allow-any)
+fi
+if (( DRY_RUN )); then
+  COPY_ARGS+=(--dry-run)
+fi
+codex-copy-changes "${COPY_ARGS[@]}"
+
+if (( DRY_RUN )); then
+  exit 0
+fi
+
+changelog="$REPO_PATH/CHANGELOG.md"
+testslog="$REPO_PATH/TESTS.md"
+
+if [[ ! -f "$changelog" ]]; then
+  printf '# Changelog\n\n' >"$changelog"
+fi
+if [[ ! -f "$testslog" ]]; then
+  printf '# Tests\n\n' >"$testslog"
+fi
+
+today="$(date +%F)"
+printf -- '- %s: Sync %s to %s for %s.\n' "$today" "$SRC_PATH" "$REPO_PATH" "$TICKET_NORM" >>"$changelog"
+printf -- '- Not run (deploy sync only).\n' >>"$testslog"
+
+if (( DO_COMMIT )); then
+  git -C "$REPO_PATH" checkout -B "$BRANCH"
+  git -C "$REPO_PATH" add -A
+  if git -C "$REPO_PATH" diff --cached --quiet; then
+    echo "No changes to commit."
+  else
+    git -C "$REPO_PATH" commit -m "chore(sync): ${TICKET_NORM} deploy sync"
+    if (( DO_PUSH )); then
+      git -C "$REPO_PATH" push -u origin "$BRANCH"
+    fi
+  fi
+fi
