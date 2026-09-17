@@ -1,0 +1,85 @@
+# Match the established tmux workflow while keeping Herdr's agent-aware UI.
+onboarding = false
+
+[theme]
+name = "terminal"
+
+[terminal]
+default_shell = "/usr/bin/bash"
+shell_mode = "login"
+new_cwd = "follow"
+
+[update]
+channel = "stable"
+
+[keys]
+prefix = "ctrl+a"
+reload_config = "prefix+r"
+new_tab = "prefix+c"
+rename_tab = ""
+previous_tab = "prefix+p"
+next_tab = "prefix+n"
+cycle_pane_next = "prefix+right"
+cycle_pane_previous = "prefix+left"
+last_pane = ""
+switch_tab = "prefix+1..9"
+edit_scrollback = ""
+focus_pane_left = ["prefix+h", "alt+left"]
+focus_pane_down = ["prefix+j", "prefix+down", "alt+down"]
+focus_pane_up = ["prefix+k", "prefix+up", "alt+up"]
+focus_pane_right = ["prefix+l", "alt+right"]
+split_vertical = ["prefix+v", "prefix+|", "prefix+backslash", "prefix+shift+backslash"]
+split_horizontal = "prefix+minus"
+resize_pane_left = "prefix+shift+h"
+resize_pane_down = "prefix+shift+j"
+resize_pane_up = "prefix+shift+k"
+resize_pane_right = "prefix+shift+l"
+toggle_sidebar = "prefix+ctrl+e"
+
+[[keys.command]]
+key = "prefix+e"
+type = "shell"
+command = "/home/clevere/.config/herdr/start-codex.sh"
+description = "start Codex in a new tab"
+
+[[keys.command]]
+key = "prefix+shift+c"
+type = "shell"
+command = "/home/clevere/.config/herdr/start-claude.sh"
+description = "start Claude in a new tab"
+
+[[keys.command]]
+key = "prefix+a"
+type = "shell"
+command = "herdr plugin action invoke last-tab --plugin local.tmux-tabs"
+description = "select the last used tab"
+
+[[keys.command]]
+key = "prefix+q"
+type = "shell"
+command = "herdr plugin pane open --plugin local.tmux-tabs --entrypoint picker"
+description = "show numbered tabs"
+
+[[keys.command]]
+key = "prefix+comma"
+type = "shell"
+command = "herdr plugin pane open --plugin local.tmux-tabs --entrypoint rename"
+description = "rename tab without its number prefix"
+
+[ui]
+mouse_capture = false
+copy_on_select = true
+sidebar_start_collapsed = true
+pane_borders = true
+pane_outer_borders = false
+pane_scrollbars = false
+pane_gaps = false
+tab_bar_position = "bottom"
+prompt_new_tab_name = false
+window_title = "{hostname}: {workspace}"
+
+[session]
+resume_agents_on_restore = true
+
+[experimental]
+pane_history = false

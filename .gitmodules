@@ -17,3 +17,7 @@
 [submodule "tmux/plugins/tpm"]
 	path = tmux/plugins/tpm
 	url = https://github.com/tmux-plugins/tpm
+[submodule "herdr/plugins/tmux-tabs"]
+	path = herdr/plugins/tmux-tabs
+	url = git@github.com:clevere-msa/herdr-tmux-tabs.git
+	branch = main
