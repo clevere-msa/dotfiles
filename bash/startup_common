@@ -115,6 +115,41 @@ path_prepend "/home/linuxbrew/.linuxbrew/opt/tfenv/bin"
 export PATH
 
 
+function awsp {
+    local profile
+
+    case "${1-}" in
+        -h|--help)
+            cat <<'EOF'
+Usage: awsp [profile]
+
+Login to an AWS SSO profile using device-code authorization, then set
+AWS_PROFILE for the current shell. Defaults to the current AWS_PROFILE,
+or "default" when AWS_PROFILE is unset.
+EOF
+            return 0
+            ;;
+    esac
+
+    profile="${1-${AWS_PROFILE:-default}}"
+
+    if ! command -v aws >/dev/null 2>&1; then
+        echo "awsp: aws CLI not found in PATH" >&2
+        return 127
+    fi
+
+    if ! aws configure list-profiles | rg -qx -- "$profile"; then
+        echo "awsp: unknown AWS profile: $profile" >&2
+        echo "awsp: available profiles:" >&2
+        aws configure list-profiles >&2
+        return 2
+    fi
+
+    aws sso login --use-device-code --profile "$profile" || return $?
+    export AWS_PROFILE="$profile"
+    echo "AWS_PROFILE=$AWS_PROFILE"
+}
+
 case $- in
   *i*) ;;
   *) return 0 ;;
