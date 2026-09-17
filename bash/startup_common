@@ -5,7 +5,54 @@
 # User specific environment and startup programs
 export MACHINE="$(hostname -s 2>/dev/null || hostname)"
 export HOME="/home/$LOGNAME"
-export PATH=".:./bin:/usr/local/bin:$HOME/bin:$HOME/.local/bin:/project/util/bin:/project/msa/bin:$PATH:/bin"
+path_prepend() {
+  path_remove "$1"
+  PATH="$1${PATH:+:$PATH}"
+}
+
+path_append() {
+  path_remove "$1"
+  PATH="${PATH:+$PATH:}$1"
+}
+
+path_remove() {
+  local old_ifs="$IFS" entry remove new_path
+  remove="$1"
+  new_path=""
+  IFS=:
+  for entry in ${PATH:-}; do
+    [ "$entry" = "$remove" ] && continue
+    new_path="${new_path:+$new_path:}$entry"
+  done
+  IFS="$old_ifs"
+  PATH="$new_path"
+}
+
+dedupe_path() {
+  local old_ifs="$IFS" entry new_path
+  new_path=""
+  IFS=:
+  for entry in ${PATH:-}; do
+    [ -n "$entry" ] || continue
+    case ":$new_path:" in
+      *":$entry:"*) ;;
+      *) new_path="${new_path:+$new_path:}$entry" ;;
+    esac
+  done
+  IFS="$old_ifs"
+  PATH="$new_path"
+}
+
+dedupe_path
+path_remove "."
+path_remove "./bin"
+path_prepend "/project/msa/bin"
+path_prepend "/project/util/bin"
+path_prepend "$HOME/.local/bin"
+path_prepend "$HOME/bin"
+path_prepend "/usr/local/bin"
+path_append "/bin"
+export PATH
 export SHELL='/bin/bash'
 export PERL5LIB="/project/users/$LOGNAME/lib/perl5"
 export GIT="git@github.com"
@@ -63,7 +110,10 @@ eval "$(dircolors -b "$HOME/dotfiles/bash/dir_colors")"
 export NVM_DIR="$HOME/.nvm"
 [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
 eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)"
-export PATH="/home/linuxbrew/.linuxbrew/opt/tfenv/bin:$PATH"
+dedupe_path
+path_prepend "/home/linuxbrew/.linuxbrew/opt/tfenv/bin"
+export PATH
+
 
 case $- in
   *i*) ;;
