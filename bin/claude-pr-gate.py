@@ -187,6 +187,89 @@ def load_manifest(root: Path) -> tuple[list[dict], str] | None:
     return None
 
 
+# --- Built-in: secrets ------------------------------------------------------------------
+# This one is NOT declared per repository, unlike every other check here. "Do not publish
+# a private key" is not a project policy that a manifest transcribes from CI -- it holds
+# everywhere, including in repositories with no manifest at all, and a repository that
+# forgot to declare it is exactly the one that needs it. So it runs whenever gitleaks is
+# available and the command publishes.
+#
+# SCOPE IS THE PUSH, NOT THE HISTORY. It scans only the commits this push would publish.
+# Scanning the whole history instead would mean a repository with a legacy finding could
+# never push again -- the gate would be permanently red for something the push did not
+# introduce, and a permanently red gate gets switched off. Legacy findings are a cleanup
+# job, not a reason to block unrelated work.
+SECRETS_DIGEST_LINES = 12
+
+
+def push_range(root: Path) -> str | None:
+    """The commits this push would publish, as a git range. None means 'scan everything'."""
+    branch = git(root, "rev-parse", "--abbrev-ref", "HEAD").strip()
+    upstream = git(root, "rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{u}").strip()
+    if upstream and "/" in upstream:
+        return f"{upstream}..HEAD"
+    default = git(root, "symbolic-ref", "--quiet", "--short", "refs/remotes/origin/HEAD").strip()
+    default = default or "origin/main"
+    if git(root, "rev-parse", "--verify", "--quiet", default).strip():
+        return f"{default}..HEAD"
+    return None  # Nothing published yet: every commit is new.
+
+
+def secrets_check(root: Path) -> str | None:
+    """Return failure text, or None if clean / not applicable."""
+    from shutil import which
+
+    if not which("gitleaks") or os.environ.get("CLAUDE_PR_GATE_SECRETS", "").lower() in {
+        "off", "0", "false"
+    }:
+        return None
+    rng = push_range(root)
+    if rng is not None:
+        try:
+            unpublished = int(git(root, "rev-list", "--count", rng).strip() or "0")
+        except ValueError:
+            unpublished = 0
+        if unpublished == 0:
+            return None  # Nothing this push would add.
+    command = ["gitleaks", "git", "--no-banner", "--redact", "--report-format=json",
+               "--report-path=/dev/stdout"]
+    if rng is not None:
+        command.append(f"--log-opts={rng}")
+    command.append(str(root))
+    env = {k: v for k, v in os.environ.items() if k not in HOSTILE_ENV}
+    try:
+        out = subprocess.run(
+            command, cwd=str(root), env=env, capture_output=True, text=True, timeout=300
+        )
+    except Exception:
+        return None  # Fails soft: a broken scanner must not wedge every push.
+    if out.returncode == 0:
+        return None
+    try:
+        findings = json.loads(out.stdout or "[]")
+    except ValueError:
+        findings = []
+    if not findings:
+        return None
+    lines = [
+        f"  {f.get('RuleID', '?')}  {f.get('File', '?')}:{f.get('StartLine', '?')}"
+        f"  commit {str(f.get('Commit', ''))[:8]}"
+        for f in findings[:SECRETS_DIGEST_LINES]
+    ]
+    held = len(findings) - len(lines)
+    if held > 0:
+        lines.append(f"  ({held} more)")
+    scope = rng or "the full history (nothing published yet)"
+    return (
+        f"{len(findings)} secret finding(s) in {scope}.\n"
+        + "\n".join(lines)
+        + "\n\nValues are redacted here. If one is a true positive, rotate it first --\n"
+        "removing the commit does not un-leak a key that was already pushed.\n"
+        "If they are all false positives, add a gitleaks allowlist, or set\n"
+        "CLAUDE_PR_GATE_SECRETS=off for this push."
+    )
+
+
 def fingerprint(root: Path, manifest: str) -> str:
     """Identify the exact tree the gates would run against.
 
@@ -333,6 +416,10 @@ def main() -> None:
             f"PR gate: {root}/.claude/gates.toml could not be parsed ({error}).\n"
             "Fix the manifest, or set CLAUDE_PR_GATE=off for this push."
         )
+    leak = secrets_check(root)
+    if leak:
+        refuse("PR gate failed: secrets\n\n" + leak)
+
     if manifest is None:
         sys.exit(0)  # No declared gates for this repository. Not our business.
 

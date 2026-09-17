@@ -319,3 +319,36 @@ noise about things their caller defines.
 transcribes CI's `shell-syntax` (`bash -n`) and `shellcheck` checks. `aws-infra` runs
 neither, and `dotfiles` has no CI at all -- so shell is gated exactly where CI gates it,
 and inventing a gate for the others is the thing this whole design exists to avoid.
+
+## Secrets
+
+The one check that is **not** declared per repository. Every other gate here is
+transcribed from a repo's own CI; this one runs wherever gitleaks is installed, including
+in repositories with no manifest at all -- a repository that never declared a secrets
+check is precisely the one that needs it. Disable with `CLAUDE_PR_GATE_SECRETS=off`.
+
+**It scans the push, not the history.** Only the commits the push would publish
+(`<upstream>..HEAD`, or everything if nothing has been published yet). Scanning full
+history instead would leave any repository with a legacy finding permanently unable to
+push -- red for something the push did not introduce -- and a permanently red gate gets
+switched off rather than fixed. Legacy findings are a cleanup job, not a reason to block
+unrelated work.
+
+Verified against a repo whose *published* history already contains a private key: a clean
+commit on top passes, and a commit that adds a new key is refused, reporting only the new
+one and naming the range (`origin/main..HEAD`). Findings are `--redact`ed, so the refusal
+names the rule, file, line and commit but never the value.
+
+### What the audit found (2026-09-17)
+
+Before this, there was effectively no secrets detection anywhere:
+
+- no local git hooks in any of the three repos, and `pre-commit` is not installed
+- GitHub secret scanning **and** push protection are **disabled** on both work repos
+- `aws-infra`'s `_reusable_scan.yml` does run gitleaks, but it is `workflow_call`-only and
+  **nothing in the repository calls it**
+- the crawler has no secret scanning at all
+- `gitleaks` and `trufflehog` were both installed and wired into nothing
+
+Scanning full history found: `dotfiles` 3 (2 private-key, 1 generic-api-key),
+`aws-infra` 45 (33 in test fixtures, 7 in policy evidence files, 5 elsewhere), crawler 0.
