@@ -14,6 +14,9 @@ channel = "stable"
 
 [keys]
 prefix = "ctrl+a"
+# prefix+r is resize_mode by default, which silently wins over this rebind and
+# makes Ctrl-A r a no-op. Resizing is already on prefix+shift+h/j/k/l below.
+resize_mode = ""
 reload_config = "prefix+r"
 new_tab = "prefix+c"
 rename_tab = ""
