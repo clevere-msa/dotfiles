@@ -1,0 +1,162 @@
+#!/usr/bin/env bash
+set -euo pipefail
+set +x
+
+usage() {
+  cat >&2 <<'EOF'
+codex-repo-sync: copy Codex-changed files from a repo into a mapped deploy dir.
+
+Usage:
+  codex-repo-sync --repo PATH [--deploy NAME|PATH] [options]
+
+Options:
+  --repo PATH          Source repo path (required)
+  --deploy NAME|PATH   Deploy dir name (under /project) or absolute path
+  --map FILE           Mapping file (default: $HOME/.codex/deploy_repo_map.txt)
+  --test-cmd CMD       Optional test command to run in repo before copy
+  --changed-file FILE  Changed files list (default: $CODEX_RUNS_DIR/changed_files.txt)
+  --allow-prefix LIST  Comma-separated list of allowed path prefixes
+                       (default: bin/,perl-lib/,web/cgi-bin/,etc/,config/,web/object-config/)
+  --allow-any          Disable prefix filtering (copy any changed file under repo)
+  -n, --dry-run        Show planned actions without changes
+  -h, --help           Show this help
+EOF
+}
+
+REPO_PATH=""
+DEPLOY_ARG=""
+MAP_FILE="${CODEX_DEPLOY_REPO_MAP_FILE:-$HOME/.codex/deploy_repo_map.txt}"
+TEST_CMD=""
+CHANGED_FILE="${CODEX_CHANGED_FILES_FILE:-}"
+ALLOW_PREFIXES="bin/,perl-lib/,web/cgi-bin/,etc/,config/,web/object-config/"
+ALLOW_ANY=0
+DRY_RUN=0
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --repo)
+      REPO_PATH="${2:-}"
+      shift 2
+      ;;
+    --deploy)
+      DEPLOY_ARG="${2:-}"
+      shift 2
+      ;;
+    --map)
+      MAP_FILE="${2:-}"
+      shift 2
+      ;;
+    --test-cmd)
+      TEST_CMD="${2:-}"
+      shift 2
+      ;;
+    --changed-file)
+      CHANGED_FILE="${2:-}"
+      shift 2
+      ;;
+    --allow-prefix)
+      ALLOW_PREFIXES="${2:-}"
+      shift 2
+      ;;
+    --allow-any)
+      ALLOW_ANY=1
+      shift
+      ;;
+    -n|--dry-run)
+      DRY_RUN=1
+      shift
+      ;;
+    -h|--help)
+      usage
+      exit 0
+      ;;
+    *)
+      echo "Unknown option: $1" >&2
+      usage
+      exit 2
+      ;;
+  esac
+done
+
+if [[ -z "$REPO_PATH" ]]; then
+  echo "ERROR: --repo is required" >&2
+  usage
+  exit 2
+fi
+
+if [[ -z "$CHANGED_FILE" && -n "${CODEX_RUNS_DIR:-}" ]]; then
+  CHANGED_FILE="${CODEX_RUNS_DIR}/changed_files.txt"
+fi
+
+if [[ -z "$CHANGED_FILE" ]]; then
+  echo "ERROR: changed files list not specified and CODEX_RUNS_DIR is empty" >&2
+  exit 2
+fi
+
+if [[ ! -f "$CHANGED_FILE" ]]; then
+  echo "ERROR: changed files list not found: $CHANGED_FILE" >&2
+  exit 1
+fi
+
+if [[ -n "$DEPLOY_ARG" ]]; then
+  if [[ "$DEPLOY_ARG" == /* ]]; then
+    DEPLOY_PATH="$DEPLOY_ARG"
+  else
+    DEPLOY_PATH="/project/$DEPLOY_ARG"
+  fi
+else
+  DEPLOY_PATH=""
+  if [[ -f "$MAP_FILE" ]]; then
+    while IFS=$'\t' read -r map_deploy map_repo || [[ -n "$map_deploy" ]]; do
+      map_deploy="${map_deploy%%#*}"
+      map_deploy="$(printf '%s' "$map_deploy" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')"
+      map_repo="$(printf '%s' "$map_repo" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')"
+      [[ -z "$map_deploy" || -z "$map_repo" ]] && continue
+      if [[ "$REPO_PATH" == "$map_repo" ]]; then
+        if [[ "$map_deploy" == /* ]]; then
+          DEPLOY_PATH="$map_deploy"
+        else
+          DEPLOY_PATH="/project/$map_deploy"
+        fi
+        break
+      fi
+    done < "$MAP_FILE"
+  fi
+fi
+
+if [[ -z "$DEPLOY_PATH" ]]; then
+  echo "ERROR: deploy path not resolved; use --deploy or update $MAP_FILE" >&2
+  exit 2
+fi
+
+if [[ ! -d "$REPO_PATH" ]]; then
+  echo "ERROR: repo path not found: $REPO_PATH" >&2
+  exit 1
+fi
+
+if [[ ! -d "$DEPLOY_PATH" ]]; then
+  echo "ERROR: deploy path not found: $DEPLOY_PATH" >&2
+  exit 1
+fi
+
+if (( DRY_RUN )); then
+  printf 'Repo:   %s\n' "$REPO_PATH"
+  printf 'Deploy: %s\n' "$DEPLOY_PATH"
+fi
+
+if [[ -n "$TEST_CMD" ]]; then
+  if (( DRY_RUN )); then
+    printf 'Would run tests: (cd %s && %s)\n' "$REPO_PATH" "$TEST_CMD"
+  else
+    (cd "$REPO_PATH" && bash -lc "$TEST_CMD")
+  fi
+fi
+
+COPY_ARGS=(--src "$REPO_PATH" --dst "$DEPLOY_PATH" --changed-file "$CHANGED_FILE" --allow-prefix "$ALLOW_PREFIXES")
+if (( ALLOW_ANY )); then
+  COPY_ARGS+=(--allow-any)
+fi
+if (( DRY_RUN )); then
+  COPY_ARGS+=(--dry-run)
+fi
+codex-copy-changes "${COPY_ARGS[@]}"

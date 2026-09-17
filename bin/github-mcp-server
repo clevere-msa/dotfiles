@@ -1,0 +1,9 @@
+#!/usr/bin/env bash
+set -euo pipefail
+BIN=${CODEX_GITHUB_MCP_REAL_BIN:-$HOME/src/github-mcp-server/bin/github-mcp-server}
+if [ ! -x "$BIN" ]; then
+  echo "github-mcp-server wrapper: missing built binary at $BIN" >&2
+  echo "Run scripts/bootstrap-mcps.sh to build it, or set CODEX_GITHUB_MCP_REAL_BIN." >&2
+  exit 1
+fi
+exec "$BIN" stdio

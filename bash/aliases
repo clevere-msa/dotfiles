@@ -45,7 +45,7 @@ alias du="du -h"
 
 alias more="less"               # better less than more
 
-alias vi="/usr/local/bin/nvim -O"
+alias vi="/home/linuxbrew/.linuxbrew/bin/nvim -O"
 
 function tf {
 	tail -f ${1} | less
@@ -76,6 +76,15 @@ alias codexpromptsync="$HOME/dotfiles/bin/codex-sync-prompts"
 
 function awslogin {
     aws sso login --use-device-code "$@"
+}
+
+function aws {
+    if [ "$1" = "sso" ] && [ "$2" = "login" ]; then
+        shift 2
+        command aws sso login --use-device-code --no-browser "$@"
+    else
+        command aws "$@"
+    fi
 }
 
 function docslist {

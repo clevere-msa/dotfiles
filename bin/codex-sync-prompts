@@ -1,0 +1,24 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+src="$HOME/.codex/prompts"
+dst="$HOME/dotfiles/codex/prompts"
+
+mkdir -p "$src" "$dst"
+
+sync_dir() {
+  local from="$1"
+  local to="$2"
+
+  if command -v rsync >/dev/null 2>&1; then
+    rsync -a "$from"/ "$to"/
+  else
+    cp -a "$from"/. "$to"/
+  fi
+}
+
+sync_dir "$src" "$dst"
+sync_dir "$dst" "$src"
+
+printf 'Synced Codex prompts between %s and %s\n' "$src" "$dst"

@@ -1,0 +1,257 @@
+#!/usr/bin/env bash
+# ~/.local/bin/pw-mcp-lease
+#
+# Robust port lease + fast-playwright-mcp lifecycle manager using systemd --user,
+# to avoid Codex/sandbox reaping background daemons.
+#
+# Range: 8231–8299 (override via PW_MCP_PORT_MIN / PW_MCP_PORT_MAX)
+#
+# Requires:
+#   - systemd user unit template: ~/.config/systemd/user/fast-playwright-mcp@.service
+#   - systemctl --user works in this shell context (use loginctl enable-linger if desired)
+#
+# Commands:
+#   pw-mcp-lease alloc
+#   pw-mcp-lease start PORT
+#   pw-mcp-lease stop PORT
+#   pw-mcp-lease release PORT
+#   pw-mcp-lease status PORT
+#   pw-mcp-lease logs PORT
+
+set -euo pipefail
+set +x
+
+PORT_MIN="${PW_MCP_PORT_MIN:-8231}"
+PORT_MAX="${PW_MCP_PORT_MAX:-8299}"
+
+STATE_DIR="${XDG_RUNTIME_DIR:-/tmp}/pw-mcp-lease"
+LOCK_FILE="${STATE_DIR}/alloc.lock"
+
+UNIT_TEMPLATE="fast-playwright-mcp@"
+UNIT_FILE="${HOME}/.config/systemd/user/fast-playwright-mcp@.service"
+
+mkdir -p "$STATE_DIR"
+
+usage() {
+  cat <<EOF
+pw-mcp-lease (systemd backend)
+
+Range: ${PORT_MIN}-${PORT_MAX}
+
+Commands:
+  alloc
+      Lease the first free port (does NOT start server). Prints: PORT
+
+  start PORT
+      Start fast-playwright-mcp via systemd user instance. Prints: PORT URL
+
+  stop PORT
+      Stop instance (keeps lease).
+
+  release PORT
+      Stop instance (if running) and release lease.
+
+  status PORT
+      systemctl --user status for instance
+
+  logs PORT
+      journalctl --user tail for instance
+
+Env overrides:
+  PW_MCP_PORT_MIN / PW_MCP_PORT_MAX
+
+Notes:
+  - Leases are tracked under: ${STATE_DIR}/port-<PORT>.lease
+  - This tool intentionally avoids nohup/background processes; systemd owns lifecycle.
+EOF
+}
+
+is_int() { [[ "${1:-}" =~ ^[0-9]+$ ]]; }
+
+lease_file() { echo "${STATE_DIR}/port-${1}.lease"; }
+
+require_systemd_user() {
+  command -v systemctl >/dev/null 2>&1 || {
+    echo "ERROR: systemctl not found" >&2
+    exit 127
+  }
+  if [[ ! -f "$UNIT_FILE" ]]; then
+    echo "ERROR: missing systemd user template unit: $UNIT_FILE" >&2
+    echo "Create ~/.config/systemd/user/fast-playwright-mcp@.service first." >&2
+    exit 2
+  fi
+}
+
+# Detect if TCP port is listening (any process)
+is_listening() {
+  local port="$1"
+  ss -ltn "( sport = :$port )" 2>/dev/null | grep -q ":$port"
+}
+
+# Detect if systemd instance is active
+service_active() {
+  local port="$1"
+  systemctl --user is-active --quiet "${UNIT_TEMPLATE}${port}.service"
+}
+
+acquire_port() {
+  # Atomic allocator guarded by a lock file
+  exec 9>"$LOCK_FILE"
+  flock -x 9
+
+  local p
+  for ((p = PORT_MIN; p <= PORT_MAX; p++)); do
+    local lf
+    lf="$(lease_file "$p")"
+
+    # Skip already leased
+    if [[ -e "$lf" ]]; then
+      continue
+    fi
+
+    # Skip if already listening or active
+    if is_listening "$p" || service_active "$p"; then
+      continue
+    fi
+
+    printf '%s\n' "$$" >"$lf"
+    flock -u 9
+    echo "$p"
+    return 0
+  done
+
+  flock -u 9
+  echo "ERROR: No free ports in ${PORT_MIN}-${PORT_MAX}" >&2
+  return 2
+}
+
+ensure_leased_or_fail() {
+  local port="$1"
+  local lf
+  lf="$(lease_file "$port")"
+  if [[ ! -f "$lf" ]]; then
+    echo "ERROR: Port $port is not leased. Run: pw-mcp-lease alloc (or lease this port explicitly)." >&2
+    exit 3
+  fi
+}
+
+cmd_alloc() {
+  require_systemd_user
+  acquire_port
+}
+
+cmd_start() {
+  require_systemd_user
+  local port="${1:-}"
+  is_int "$port" || {
+    echo "ERROR: PORT must be integer" >&2
+    exit 2
+  }
+
+  ensure_leased_or_fail "$port"
+
+  systemctl --user daemon-reload
+
+  # Start the instance. If it fails, show logs and return non-zero.
+  if ! systemctl --user start "${UNIT_TEMPLATE}${port}.service"; then
+    echo "ERROR: failed to start ${UNIT_TEMPLATE}${port}.service" >&2
+    journalctl --user -u "${UNIT_TEMPLATE}${port}.service" -n 120 --no-pager >&2 || true
+    exit 4
+  fi
+
+  # Wait briefly for port to listen
+  local deadline=$((SECONDS + 15))
+  while ((SECONDS < deadline)); do
+    if is_listening "$port"; then
+      echo "$port http://127.0.0.1:${port}/mcp"
+      return 0
+    fi
+    sleep 0.2
+  done
+
+  echo "ERROR: ${UNIT_TEMPLATE}${port}.service started but port ${port} is not listening" >&2
+  journalctl --user -u "${UNIT_TEMPLATE}${port}.service" -n 120 --no-pager >&2 || true
+  exit 5
+}
+
+cmd_stop() {
+  require_systemd_user
+  local port="${1:-}"
+  is_int "$port" || {
+    echo "ERROR: PORT must be integer" >&2
+    exit 2
+  }
+
+  ensure_leased_or_fail "$port"
+
+  systemctl --user stop "${UNIT_TEMPLATE}${port}.service" || true
+  echo "Stopped ${UNIT_TEMPLATE}${port}.service (lease retained)"
+}
+
+cmd_release() {
+  require_systemd_user
+  local port="${1:-}"
+  is_int "$port" || {
+    echo "ERROR: PORT must be integer" >&2
+    exit 2
+  }
+
+  # Stop if running (even if not leased, attempt stop is harmless)
+  systemctl --user stop "${UNIT_TEMPLATE}${port}.service" || true
+
+  rm -f "$(lease_file "$port")" || true
+  echo "Released $port"
+}
+
+cmd_status() {
+  require_systemd_user
+  local port="${1:-}"
+  is_int "$port" || {
+    echo "ERROR: PORT must be integer" >&2
+    exit 2
+  }
+  systemctl --user status "${UNIT_TEMPLATE}${port}.service" --no-pager
+}
+
+cmd_logs() {
+  require_systemd_user
+  local port="${1:-}"
+  is_int "$port" || {
+    echo "ERROR: PORT must be integer" >&2
+    exit 2
+  }
+  journalctl --user -u "${UNIT_TEMPLATE}${port}.service" -n 200 --no-pager
+}
+
+case "${1:-}" in
+alloc)
+  shift
+  cmd_alloc "$@"
+  ;;
+start)
+  shift
+  cmd_start "${1:-}"
+  ;;
+stop)
+  shift
+  cmd_stop "${1:-}"
+  ;;
+release)
+  shift
+  cmd_release "${1:-}"
+  ;;
+status)
+  shift
+  cmd_status "${1:-}"
+  ;;
+logs)
+  shift
+  cmd_logs "${1:-}"
+  ;;
+"" | help | -h | --help) usage ;;
+*)
+  echo "Unknown command: ${1:-}" >&2
+  usage
+  exit 2
+  ;;
+esac

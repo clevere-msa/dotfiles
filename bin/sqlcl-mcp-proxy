@@ -1,0 +1,142 @@
+#!/usr/bin/env python3
+import json
+import os
+import subprocess
+import sys
+import threading
+from typing import Any, Dict, Hashable, Set
+
+TOOLS_LIST_IDS: Set[Hashable] = set()
+LOCK = threading.Lock()
+
+def _is_null_schema(s: Any) -> bool:
+    return isinstance(s, dict) and s.get("type") == "null"
+
+def normalize_schema(schema: Any) -> Any:
+    if isinstance(schema, list):
+        return [normalize_schema(x) for x in schema]
+    if not isinstance(schema, dict):
+        return schema
+    s = dict(schema)
+    for key in ("anyOf", "oneOf"):
+        if key in s and isinstance(s[key], list) and s[key]:
+            choices = [c for c in s[key] if not _is_null_schema(c)]
+            chosen = choices[0] if choices else s[key][0]
+            chosen = normalize_schema(chosen)
+            s.pop(key, None)
+            if isinstance(chosen, dict):
+                merged = dict(s)
+                merged.update(chosen)
+                s = merged
+            else:
+                s = {"type": "string"}
+            break
+    t = s.get("type")
+    if t == "integer":
+        s["type"] = "number"
+    elif isinstance(t, list):
+        non_null = [x for x in t if x != "null"]
+        s["type"] = non_null[0] if len(non_null) == 1 else "string"
+    ap = s.get("additionalProperties")
+    if isinstance(ap, dict):
+        s["additionalProperties"] = True
+    for field in ("properties", "patternProperties", "definitions", "$defs"):
+        if field in s and isinstance(s[field], dict):
+            s[field] = {k: normalize_schema(v) for k, v in s[field].items()}
+    if "items" in s:
+        s["items"] = normalize_schema(s["items"])
+    if "allOf" in s and isinstance(s["allOf"], list):
+        s["allOf"] = [normalize_schema(x) for x in s["allOf"]]
+    if "properties" in s and "type" not in s:
+        s["type"] = "object"
+    return s
+
+def normalize_tools_list_response(msg: Dict[str, Any]) -> Dict[str, Any]:
+    res = msg.get("result")
+    if not isinstance(res, dict):
+        return msg
+    tools = res.get("tools")
+    if not isinstance(tools, list):
+        return msg
+    new_tools = []
+    for tool in tools:
+        if not isinstance(tool, dict):
+            new_tools.append(tool)
+            continue
+        t = dict(tool)
+        inp = t.get("inputSchema")
+        if isinstance(inp, dict):
+            t["inputSchema"] = normalize_schema(inp)
+        outp = t.get("outputSchema")
+        if isinstance(outp, dict):
+            t["outputSchema"] = normalize_schema(outp)
+        new_tools.append(t)
+    msg2 = dict(msg)
+    res2 = dict(res)
+    res2["tools"] = new_tools
+    msg2["result"] = res2
+    return msg2
+
+def read_lines(stream, handler):
+    for line in stream:
+        line = line.strip()
+        if not line:
+            continue
+        handler(line)
+
+def main():
+    if "--" not in sys.argv:
+        print("Usage: sqlcl-mcp-proxy -- /path/to/sql -mcp", file=sys.stderr)
+        sys.exit(2)
+    idx = sys.argv.index("--")
+    cmd = sys.argv[idx + 1 :]
+    if not cmd:
+        print("ERROR: missing underlying command after --", file=sys.stderr)
+        sys.exit(2)
+    proc = subprocess.Popen(
+        cmd,
+        stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE,
+        stderr=sys.stderr,
+        text=True,
+        bufsize=1,
+        env=os.environ.copy(),
+    )
+    assert proc.stdin is not None
+    assert proc.stdout is not None
+    def handle_client_to_server(line: str):
+        try:
+            msg = json.loads(line)
+            if isinstance(msg, dict) and msg.get("method") == "tools/list":
+                mid = msg.get("id")
+                if isinstance(mid, (int, str)):
+                    with LOCK:
+                        TOOLS_LIST_IDS.add(mid)
+        except Exception:
+            pass
+        proc.stdin.write(line + "\n")
+        proc.stdin.flush()
+    def handle_server_to_client(line: str):
+        try:
+            msg = json.loads(line)
+            if isinstance(msg, dict) and "id" in msg and "result" in msg:
+                mid = msg.get("id")
+                with LOCK:
+                    is_tools_list = isinstance(mid, (int, str)) and (mid in TOOLS_LIST_IDS)
+                    if is_tools_list:
+                        TOOLS_LIST_IDS.discard(mid)
+                if is_tools_list:
+                    msg = normalize_tools_list_response(msg)
+                    line = json.dumps(msg, ensure_ascii=False)
+        except Exception:
+            pass
+        sys.stdout.write(line + "\n")
+        sys.stdout.flush()
+    t1 = threading.Thread(target=read_lines, args=(sys.stdin, handle_client_to_server), daemon=True)
+    t2 = threading.Thread(target=read_lines, args=(proc.stdout, handle_server_to_client), daemon=True)
+    t1.start()
+    t2.start()
+    sys.exit(proc.wait())
+
+if __name__ == "__main__":
+    main()

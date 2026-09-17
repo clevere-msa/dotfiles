@@ -6,6 +6,7 @@
 # - recursion protection
 # - --no-wrapper escape hatch
 # - default Codex flags unless explicitly overridden
+# - compatibility translation for legacy --full-auto
 
 if [ -z "${BASH_VERSION:-}" ]; then
   exec /usr/bin/env bash "$0" "$@"
@@ -30,8 +31,11 @@ Wrapper options:
 
 Notes:
   - --no-wrapper bypasses all wrapper logic.
-  - Wrapper defaults to --full-auto unless CODEX_FORCE_FULL_AUTO=0.
-  - Wrapper defaults to -s workspace-write unless you already set -s/--sandbox.
+  - Wrapper defaults to full-auto mode unless CODEX_FORCE_FULL_AUTO=0.
+    Legacy --full-auto is translated to --dangerously-bypass-approvals-and-sandbox
+    for current Codex CLI versions.
+  - When full-auto mode is disabled, wrapper defaults to -s workspace-write
+    unless you already set -s/--sandbox.
   - Wrapper defaults to -a on-failure unless full-auto is active or you already set approval flags.
   - Extra readable roots come from CODEX_DEFAULT_ADD_DIRS or ~/.codex/add_dirs.txt.
 EOF_USAGE
@@ -149,16 +153,30 @@ fi
 
 DEFAULT_ARGS=()
 USE_FULL_AUTO=0
-if has_arg "--full-auto" "${CODEX_ARGS[@]}" || has_arg "--dangerously-bypass-approvals-and-sandbox" "${CODEX_ARGS[@]}"; then
+NORMALIZED_CODEX_ARGS=()
+for arg in "${CODEX_ARGS[@]}"; do
+  if [[ "$arg" == "--full-auto" ]]; then
+    USE_FULL_AUTO=1
+    if ! has_arg "--dangerously-bypass-approvals-and-sandbox" "${NORMALIZED_CODEX_ARGS[@]}" "${CODEX_ARGS[@]}"; then
+      NORMALIZED_CODEX_ARGS+=("--dangerously-bypass-approvals-and-sandbox")
+    fi
+  else
+    NORMALIZED_CODEX_ARGS+=("$arg")
+  fi
+done
+CODEX_ARGS=("${NORMALIZED_CODEX_ARGS[@]}")
+
+if has_arg "--dangerously-bypass-approvals-and-sandbox" "${CODEX_ARGS[@]}"; then
   USE_FULL_AUTO=1
 fi
 if [[ "${CODEX_FORCE_FULL_AUTO:-1}" == "1" ]] && (( ! USE_FULL_AUTO )); then
-  DEFAULT_ARGS+=("--full-auto")
+  DEFAULT_ARGS+=("--dangerously-bypass-approvals-and-sandbox")
   USE_FULL_AUTO=1
 fi
 
 if ! has_arg "-s" "${CODEX_ARGS[@]}" && ! has_arg "--sandbox" "${CODEX_ARGS[@]}" \
-  && ! has_arg "--dangerously-bypass-approvals-and-sandbox" "${CODEX_ARGS[@]}"; then
+  && ! has_arg "--dangerously-bypass-approvals-and-sandbox" "${CODEX_ARGS[@]}" \
+  && (( ! USE_FULL_AUTO )); then
   DEFAULT_SANDBOX_MODE="${CODEX_DEFAULT_SANDBOX_MODE:-workspace-write}"
   DEFAULT_ARGS+=("-s" "$DEFAULT_SANDBOX_MODE")
 fi
