@@ -38,7 +38,29 @@ Gates are declared per repository, never hardcoded in the hook: this hook is reg
 `~/.claude/settings.json` and therefore fires in every repository under this home
 directory. A repository with no manifest is a silent no-op.
 
-The manifest is `.claude/gates.toml`, or a `[tool.claude-gates]` table in `pyproject.toml`:
+## Where manifests live
+
+Resolution order, first hit wins:
+
+1. `~/.claude/gates/<abs-path-with-slashes-as-dashes>.toml` -- e.g.
+   `~/.claude/gates/-home-clevere-aws-infra-md4260.toml`, keyed the way `~/.claude/projects/`
+   already keys things, so two checkouts of one repo do not collide
+2. `~/.claude/gates/<repo-basename>.toml`
+3. the repository's own `.claude/gates.toml`
+4. a `[tool.claude-gates]` table in `pyproject.toml`
+
+**The config directory is searched first, and that is the intended home for these.** A gate
+manifest describes one person's local pre-push checks, not the project's contract.
+Committing one into a shared repository drags agent configuration through ticket-scoped
+PRs, and in repositories that require change tickets and approver trailers it turns a local
+convenience into a compliance artifact needing a Jira reference and a named human approver.
+Both manifests here live in `~/.claude/gates/`; the work repositories are untouched.
+
+A repository that genuinely wants to ship its own manifest still can -- that is what
+options 3 and 4 are for. The same applies to the tflint ruleset, which lives in
+`~/.claude/tflint/<slug>.hcl` and is passed with `--config`.
+
+The manifest format is the same wherever it lives:
 
 ```toml
 [[check]]
@@ -100,9 +122,9 @@ So the hook is built to spend as little context as it can:
 ## Installed
 
 - `~/.claude/settings.json` -> `PreToolUse` / `Bash` (backup at `settings.json.bak-pr-gate`)
-- `business-process-modeling-api-crawler/.claude/gates.toml` -- 12 checks transcribed from
+- `~/.claude/gates/-home-clevere-business-process-modeling-api-crawler.toml` -- 12 checks transcribed from
   `full-test-suite.yml` and `ai-guardrails.yml`
-- `aws-infra-md4260/.claude/gates.toml` -- 15 checks, the credential-free subset of the 16
+- `~/.claude/gates/-home-clevere-aws-infra-md4260.toml` -- 15 checks, the credential-free subset of the 16
   workflows that gate a PR there. ~28s cold, ~54ms cached.
 
 The two policy checks at the front of that manifest are worth copying to any MSA
@@ -262,7 +284,7 @@ one module: 2 findings, both legitimate.
 This converts the bulk of the `terraform-style-guide` skill from prose into checks --
 typed variables, required descriptions, unused declarations, required_version and
 required_providers. It is **not** a PR gate and is deliberately absent from
-`.claude/gates.toml`: no workflow runs tflint, and gating on it would block pushes over
+the gate manifest: no workflow runs tflint, and gating on it would block pushes over
 pre-existing findings until the repository has been swept.
 
 ## Shell
@@ -274,7 +296,7 @@ defaults would be the `ruff format` mistake again with a larger blast radius. If
 style is ever adopted, add shfmt behind the same declared-style check.
 
 **Severity follows the project, as with ruff.** Where shellcheck is declared -- a
-`.shellcheckrc`, or shellcheck named in the repo's `.claude/gates.toml` or workflows --
+`.shellcheckrc`, or shellcheck named in the gate manifest or the repo's workflows --
 it runs at full severity, matching CI exactly. The crawler qualifies: CI runs bare
 `shellcheck` on `tools/`, `scripts/` and `tests/shell/`. Everywhere else it runs
 `--severity=warning`, reporting defects and dropping opinions.

@@ -196,9 +196,19 @@ def lint_terraform(path: Path) -> tuple[bool, list[str]]:
     command = [tflint, "--format=json", f"--filter={path.name}"]
     root = git_root(path)
     if root and not (path.parent.resolve() / ".tflint.hcl").is_file():
-        config = root / ".tflint.hcl"
-        if config.is_file():
-            command.append(f"--config={config}")
+        # Same reasoning as the gate manifests: a personal ruleset belongs in the user's
+        # config, not committed into a shared repository. Since --config is passed
+        # explicitly anyway (tflint does not walk up), the file can live anywhere.
+        slug = str(root.resolve()).replace("/", "-")
+        tflint_dir = _lib.claude_home() / "tflint"
+        for config in (
+            tflint_dir / f"{slug}.hcl",
+            tflint_dir / f"{root.name}.hcl",
+            root / ".tflint.hcl",
+        ):
+            if config.is_file():
+                command.append(f"--config={config}")
+                break
     result = run(command, path.parent)
     if not result or not result.stdout.strip():
         return formatted, []

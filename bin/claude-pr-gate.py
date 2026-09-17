@@ -132,9 +132,39 @@ def git(root: Path, *args: str) -> str:
     return out.stdout
 
 
+def config_slug(root: Path) -> str:
+    """Key a repository by its absolute path, the way ~/.claude/projects/ already does.
+
+    `/home/clevere/aws-infra-md4260` becomes `-home-clevere-aws-infra-md4260`. Keying by
+    basename alone would collide between two checkouts of the same repo.
+    """
+    return str(root.resolve()).replace("/", "-")
+
+
+def local_manifest(root: Path) -> Path | None:
+    """A manifest held in the user's Claude config rather than in the repository.
+
+    These gate manifests are personal tooling: they describe someone's local pre-push
+    checks, not the project's contract. Committing one into a shared repository puts
+    agent configuration into ticket-scoped PRs and, in repositories that require change
+    tickets and approver trailers, makes a local convenience into a compliance artifact.
+    So the config directory is searched FIRST and a repository that ships its own
+    manifest is still honoured.
+    """
+    gates_dir = _lib.claude_home() / "gates"
+    for candidate in (gates_dir / f"{config_slug(root)}.toml", gates_dir / f"{root.name}.toml"):
+        if candidate.is_file():
+            return candidate
+    return None
+
+
 def load_manifest(root: Path) -> tuple[list[dict], str] | None:
-    """Return (checks, raw manifest text) from .claude/gates.toml or pyproject.toml."""
-    gates_file = root / ".claude" / "gates.toml"
+    """Return (checks, raw manifest text).
+
+    Resolution order: ~/.claude/gates/<repo>.toml, then the repo's own
+    .claude/gates.toml, then [tool.claude-gates] in pyproject.toml.
+    """
+    gates_file = local_manifest(root) or root / ".claude" / "gates.toml"
     if gates_file.is_file():
         raw = gates_file.read_text(encoding="utf-8")
         data = tomllib.loads(raw)
