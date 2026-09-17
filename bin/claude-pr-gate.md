@@ -233,6 +233,7 @@ Escape hatch: `CLAUDE_LINT=off`.
 |---|---|---|
 | `.py`, `.pyi` | `ruff format --force-exclude` *(only if ruff is configured)* | `ruff check --force-exclude` *(`--select=E9,F` if not configured)* |
 | `.tf`, `.tfvars` | `terraform fmt` | `tflint --filter=<file> --config=<git root>/.tflint.hcl` |
+| `.sh`, `.bash`, or any shebang file | *(nothing)* | `shellcheck --format=gcc` (`--severity=warning` if not declared) |
 
 The header says "reformatted; these need a decision" only when the file actually changed
 on disk -- compared by hash before and after, not assumed from the tool having run.
@@ -263,3 +264,36 @@ typed variables, required descriptions, unused declarations, required_version an
 required_providers. It is **not** a PR gate and is deliberately absent from
 `.claude/gates.toml`: no workflow runs tflint, and gating on it would block pushes over
 pre-existing findings until the repository has been swept.
+
+## Shell
+
+**Report only -- shell is never rewritten.** shfmt is not installed and no repository
+here declares a shell style (no `.editorconfig`, no `.shellcheckrc`), so there is nothing
+to format *to*. Reformatting the 200+ scripts in `bin/` and `sbin/` to a tool's built-in
+defaults would be the `ruff format` mistake again with a larger blast radius. If a shell
+style is ever adopted, add shfmt behind the same declared-style check.
+
+**Severity follows the project, as with ruff.** Where shellcheck is declared -- a
+`.shellcheckrc`, or shellcheck named in the repo's `.claude/gates.toml` or workflows --
+it runs at full severity, matching CI exactly. The crawler qualifies: CI runs bare
+`shellcheck` on `tools/`, `scripts/` and `tests/shell/`. Everywhere else it runs
+`--severity=warning`, reporting defects and dropping opinions.
+
+Measured: the three crawler scripts CI already passes are **silent** through the hook, as
+they must be. In `dotfiles`, 15 of 40 shell scripts report at warning level -- mostly one
+finding each, and all genuine rather than stylistic: `SC2068` (unquoted array expansion,
+an error), `SC2076` (quoted right-hand side of `=~`, which matches literally instead of as
+a regex), `SC2164` (`cd` without `|| exit`), `SC2034`, `SC2155`. This repository has not
+been swept, so opening an old script may surface findings that predate the edit.
+
+**Which files count as shell.** Extension `.sh` or `.bash`, or any file whose first line is
+a `bash`/`sh`/`dash`/`ksh` shebang -- shell scripts often have no extension
+(`scripts/install-perl-toolchain`). The shebang is also what keeps the many Perl scripts in
+`bin/` out. Files with **no** shebang are skipped deliberately: `bashrc`, `aliases` and
+`sharedrc` are sourced fragments, not scripts, and shellcheck reports undefined-variable
+noise about things their caller defines.
+
+**Nothing was added to the gate layer for shell.** The crawler's manifest already
+transcribes CI's `shell-syntax` (`bash -n`) and `shellcheck` checks. `aws-infra` runs
+neither, and `dotfiles` has no CI at all -- so shell is gated exactly where CI gates it,
+and inventing a gate for the others is the thing this whole design exists to avoid.

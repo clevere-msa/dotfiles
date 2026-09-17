@@ -41,6 +41,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -217,11 +218,95 @@ def lint_terraform(path: Path) -> tuple[bool, list[str]]:
     return formatted, issues
 
 
+def shellcheck_configured(path: Path) -> bool:
+    """True if the project DECLARES shellcheck as its standard.
+
+    Same reasoning as ruff_configured: severity is a policy, and imposing one the
+    project never adopted is noise. The signals, cheapest first -- a `.shellcheckrc`
+    walking up to the git root, shellcheck named in the repo's own gate manifest, or
+    shellcheck in its workflows. The crawler qualifies (CI runs bare `shellcheck` on
+    tools/, scripts/ and tests/shell/); aws-infra and dotfiles run it nowhere.
+    """
+    root = git_root(path)
+    current = path.parent.resolve()
+    stop = root.resolve() if root else current
+    while True:
+        if (current / ".shellcheckrc").is_file():
+            return True
+        if current == stop or current == current.parent:
+            break
+        current = current.parent
+    if not root:
+        return False
+    manifest = root / ".claude" / "gates.toml"
+    try:
+        if manifest.is_file() and "shellcheck" in manifest.read_text(
+            encoding="utf-8", errors="replace"
+        ):
+            return True
+    except OSError:
+        pass
+    workflows = root / ".github" / "workflows"
+    if workflows.is_dir():
+        for wf in workflows.glob("*.y*ml"):
+            try:
+                if "shellcheck" in wf.read_text(encoding="utf-8", errors="replace"):
+                    return True
+            except OSError:
+                continue
+    return False
+
+
+def lint_shell(path: Path) -> tuple[bool, list[str]]:
+    """Report only -- shell is never rewritten.
+
+    shfmt is not installed and no repository here declares a shell style
+    (no .editorconfig, no .shellcheckrc), so there is nothing to format *to*.
+    Reformatting 200+ scripts in dotfiles/bin to a tool's built-in defaults would be
+    the ruff mistake again, with a bigger blast radius. If a shell style is ever
+    adopted, add shfmt here behind the same declared-style check.
+    """
+    if not which("shellcheck"):
+        return False, []
+    command = ["shellcheck", "--format=gcc"]
+    if not shellcheck_configured(path):
+        # Errors and warnings are defects in any dialect; info and style are opinions.
+        command.append("--severity=warning")
+    command.append(path.name)
+    result = run(command, path.parent)
+    if not result or result.returncode == 0:
+        return False, []
+    prefix = f"{path.name}:"
+    return False, [
+        line.strip() for line in result.stdout.splitlines() if line.strip().startswith(prefix)
+    ]
+
+
+SHELL_SHEBANG = re.compile(r"^#!.*\b(?:bash|sh|dash|ksh)\b")
+
+
+def is_shell_script(path: Path) -> bool:
+    """Shell scripts frequently have no extension (`scripts/install-perl-toolchain`).
+
+    The shebang is the only reliable signal, and it also keeps the many Perl scripts in
+    dotfiles/bin out. Files with no shebang at all are skipped deliberately: bashrc,
+    aliases and sharedrc are sourced fragments, not scripts, and shellcheck on them
+    reports undefined-variable noise about things their caller defines.
+    """
+    try:
+        with path.open("r", encoding="utf-8", errors="replace") as handle:
+            return bool(SHELL_SHEBANG.match(handle.readline()))
+    except OSError:
+        return False
+
+
 DISPATCH = {
     ".py": lint_python,
     ".pyi": lint_python,
     ".tf": lint_terraform,
     ".tfvars": lint_terraform,
+    ".sh": lint_shell,
+    ".bash": lint_shell,
 }
 
 
@@ -235,8 +320,12 @@ def main() -> None:
         sys.exit(0)
 
     path = Path(raw)
+    if not path.is_file():
+        sys.exit(0)
     handler = DISPATCH.get(path.suffix.lower())
-    if handler is None or not path.is_file():
+    if handler is None and is_shell_script(path):
+        handler = lint_shell
+    if handler is None:
         sys.exit(0)
     if _lib.sensitive_path(str(path)) or not in_git_worktree(path):
         sys.exit(0)
