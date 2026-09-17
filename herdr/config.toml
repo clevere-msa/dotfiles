@@ -67,7 +67,10 @@ command = "herdr plugin pane open --plugin local.tmux-tabs --entrypoint rename"
 description = "rename tab without its number prefix"
 
 [ui]
-mouse_capture = false
+# copy_on_select copies "text selected by mouse drag or double-click", so Herdr
+# has to receive the drag: with mouse_capture = false it never sees one and
+# copying from a tab silently stops working. Keep both true, together.
+mouse_capture = true
 copy_on_select = true
 sidebar_start_collapsed = true
 pane_borders = true
