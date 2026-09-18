@@ -70,12 +70,12 @@ command = "herdr plugin pane open --plugin local.tmux-tabs --entrypoint rename"
 description = "rename tab without its number prefix"
 
 [ui]
-# Deliberately false: the host terminal owns selection, so copy lands straight
-# in the Windows clipboard. Herdr never sees the drag, which also makes
-# copy_on_select below inert -- kept only so the default is explicit.
-# When an app in a pane turns on mouse reporting it steals the drag; hold
-# shift while dragging to force native selection anyway.
-mouse_capture = false
+# Must stay true. Verified empirically 2026-09-18: with a client running
+# mouse_capture = true, drag-select copies to the Windows clipboard and
+# feels exactly like native terminal selection. Setting it false kills
+# copying immediately -- tested twice, both times it broke on reload.
+# copy_on_select below is what does the work, and it needs the capture.
+mouse_capture = true
 copy_on_select = true
 sidebar_start_collapsed = true
 pane_borders = true
