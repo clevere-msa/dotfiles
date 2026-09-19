@@ -11,7 +11,7 @@ repo.
 ## Link
 
 ```bash
-for f in config.toml start-claude.sh start-codex.sh; do
+for f in config.toml start-claude.sh start-codex.sh handoff-tab.sh; do
   ln -sfn "$HOME/dotfiles/herdr/$f" "$HOME/.config/herdr/$f"
 done
 ```
