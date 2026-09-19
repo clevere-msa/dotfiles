@@ -70,12 +70,29 @@ command = "herdr plugin pane open --plugin local.tmux-tabs --entrypoint rename"
 description = "rename tab without its number prefix"
 
 [ui]
-# Must stay true. Verified empirically 2026-09-18: with a client running
-# mouse_capture = true, drag-select copies to the Windows clipboard and
-# feels exactly like native terminal selection. Setting it false kills
-# copying immediately -- tested twice, both times it broke on reload.
-# copy_on_select below is what does the work, and it needs the capture.
-mouse_capture = true
+# Keep false: Windows Terminal owns drag-select and copy. Set 2026-09-18.
+#
+# With capture on, herdr does the copy itself and on WSL reaches the Windows
+# clipboard via OSC 52. That path is broken by herdr issue #4341 (open against
+# both 0.9.0 and 0.9.1): the "Copied to clipboard" toast fires, nothing lands.
+# `mouse_capture = false` is one of the two workarounds the issue lists.
+# Updating 0.8.2 -> 0.9.1 did NOT fix it.
+#
+# With capture off, herdr never enables mouse reporting toward the outer
+# terminal, so Windows Terminal does the selection natively and its
+# "copyOnSelect": true copies on drag. No OSC 52 involved, so #4341 and
+# Windows Terminal's focus-gating of OSC 52 writes (microsoft/terminal
+# PR #19357) are both bypassed.
+#
+# Cost, accepted: no click-to-focus, drag-resize or right-click menus in
+# herdr, and drags bleed across panes in split layouts.
+#
+# The prior comment here claimed the opposite and said it was "verified
+# empirically 2026-09-18 ... tested twice on reload". The server log shows no
+# reload_config that day at all, so that test never ran. Do not flip this
+# without running `herdr server reload-config` and checking the clipboard --
+# an edit alone does not reach the running server.
+mouse_capture = false
 copy_on_select = true
 sidebar_start_collapsed = true
 pane_borders = true
