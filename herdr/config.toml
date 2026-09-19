@@ -70,29 +70,33 @@ command = "herdr plugin pane open --plugin local.tmux-tabs --entrypoint rename"
 description = "rename tab without its number prefix"
 
 [ui]
-# Keep false: Windows Terminal owns drag-select and copy. Set 2026-09-18.
+# mouse_capture = true, restored 2026-09-18 once the real root cause was found.
 #
-# With capture on, herdr does the copy itself and on WSL reaches the Windows
-# clipboard via OSC 52. That path is broken by herdr issue #4341 (open against
-# both 0.9.0 and 0.9.1): the "Copied to clipboard" toast fires, nothing lands.
-# `mouse_capture = false` is one of the two workarounds the issue lists.
-# Updating 0.8.2 -> 0.9.1 did NOT fix it.
+# With capture on, herdr does the copy itself. On Wayland it does that by
+# spawning `wl-copy` -- the 0.9.1 binary references wl-copy three times and
+# never references xclip, xsel or clip.exe. wl-clipboard was NOT installed on
+# this machine, so that spawn failed silently: the "Copied to clipboard" toast
+# still fired, because the toast is a UI event and not a write result. That is
+# herdr issue #4341, which on this box was a missing package, not a herdr
+# defect -- which is why upgrading 0.8.2 -> 0.9.1 changed nothing.
 #
-# With capture off, herdr never enables mouse reporting toward the outer
-# terminal, so Windows Terminal does the selection natively and its
-# "copyOnSelect": true copies on drag. No OSC 52 involved, so #4341 and
-# Windows Terminal's focus-gating of OSC 52 writes (microsoft/terminal
-# PR #19357) are both bypassed.
+# It is NOT an OSC 52 problem. The comment that used to sit here said it was,
+# and that was wrong; #4341's own diagnosis says OSC 52 forwarding works fine
+# and the failure is in the helper path.
 #
-# Cost, accepted: no click-to-focus, drag-resize or right-click menus in
-# herdr, and drags bleed across panes in split layouts.
+# Fixed by installing wl-clipboard 2.2.1 (2026-09-18 19:56). Verified the same
+# day: a wl-copy write reads back through both `wl-paste` and
+# `powershell.exe -NoProfile -Command Get-Clipboard`, so the WSLg Wayland ->
+# Windows clipboard bridge works.
 #
-# The prior comment here claimed the opposite and said it was "verified
-# empirically 2026-09-18 ... tested twice on reload". The server log shows no
-# reload_config that day at all, so that test never ran. Do not flip this
-# without running `herdr server reload-config` and checking the clipboard --
-# an edit alone does not reach the running server.
-mouse_capture = false
+# Capture on gives click-to-select-tab (the reason for this change), plus
+# click-to-focus, drag-resize and right-click menus -- and plain click+drag
+# still copies, through herdr now instead of Windows Terminal. No Shift needed.
+#
+# If copy ever silently breaks again, check `command -v wl-copy` FIRST.
+# And remember: editing this file does nothing to the running server until
+# `herdr server reload-config` (or prefix+r) reports "status":"applied".
+mouse_capture = true
 copy_on_select = true
 sidebar_start_collapsed = true
 pane_borders = true
