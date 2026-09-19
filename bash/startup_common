@@ -94,7 +94,7 @@ export LESSCHARSET='latin1'
 export LESSOPEN='|/usr/bin/lesspipe.sh %s 2>&-' # Use this if lesspipe.sh exists
 export LESS='-i -N -w  -z-4 -g -M -X -F -R -P%t?f%f :stdin .?pb%pb\%:?lbLine %lb:?bbByte %bb:-...'
 
-export EDITOR=/bin/nvim
+export EDITOR=/home/linuxbrew/.linuxbrew/bin/nvim
 export CDPATH=".:..:../..:../../..:../../../..:/project/users/$LOGNAME:~"
 export INPUTRC="$HOME/dotfiles/bash/inputrc"
 export TEXINPUTS='/project/tex-lib'
